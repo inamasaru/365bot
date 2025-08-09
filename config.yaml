@@ -1,0 +1,20 @@
+---
+# Configuration for multiple business genres.
+# Each genre defines a product or service with pricing, expected
+# conversion rate (CVR), notification targets, and landing page slug.
+
+genre:
+  - slug: aga
+    product_name: "AGA高単価治療プラン"
+    price: 300000  # 商品価格（円）
+    expected_cvr: 0.03  # 想定CVR（例: 3%）
+    notify_user_ids:
+      # LINEのユーザーIDを配列で指定。リードやKPI通知を受け取る対象。
+      - "<LINE_USER_ID_1>"
+    lp_slug: "aga-lead-gen"
+    # LP記事タイトルや本文などはLP自動生成に用いる
+    lp_title: "薄毛改善で自信を取り戻す！AGA治療高単価プラン"
+    lp_description: |
+      <h1>男性の薄毛に革命を！</h1>
+      <p>最新のAGA治療で髪の悩みを根本から改善。専門医による診断で、あなたに最適なプランをご提案します。今なら無料カウンセリング実施中！</p>
+      <p>※効果には個人差があります。詳細は医師にご相談ください。</p>
