@@ -1,46 +1,15 @@
----
-# Configuration for multiple business genres.
-# Each genre defines a product or service with pricing, expected
-# conversion rate (CVR), notification targets, and landing page slug.
-
-genre:
-  - slug: aga
-    product_name: "AGA高単価治療プラン"
-    price: 300000  # 商品価格（円）
-    expected_cvr: 0.03  # 想定CVR（例: 3%）
-    notify_user_ids:
-      # LINEのユーザーIDを配列で指定。リードやKPI通知を受け取る対象。
-      - "<LINE_USER_ID_1>"
-    lp_slug: "aga-lead-gen"
-    # LP記事タイトルや本文などはLP自動生成に用いる
-    lp_title: "薄毛改善で自信を取り戻す！AGA治療高単価プラン"
-    lp_description: |
-      <h1>男性の薄毛に革命を！</h1>
-      <p>最新のAGA治療で髪の悩みを根本から改善。専門医による診断で、あなたに最適なプランをご提案します。今なら無料カウンセリング実施中！</p>
-
-        - slug: real-estate
-    product_name: "不動産投資コンサルティング"
-    price: 1500000  # 商品価格（円）
-    expected_cvr: 0.02  # 想実CVR（2%）
-    notify_user_ids:
-      - "<LINE_USER_ID_2>"
-    lp_slug: "real-estate-lead-gen"
-    lp_title: "資産運用のプロが教える不動産投資の魅力"
-    lp_description: |
-      <h1>不動産投資で資産形成を加速させる</h1>
-      <p>経験豊富なコンサルタントが市場分析から物件選定、運用方法まで丁寧にサポートします。初めての方でも安心して始められる無料相訊を実施中！</p>
-      <p>※投資にはリスクが伴います。詳細は抽選当選者にご相談ください。</p>
-  - slug: beauty-device
-    product_name: "美容機器高単価プラン"
-    price: 500000  # 商品価格（円）
-    expected_cvr: 0.04  # 想実CVR（4%）
-    notify_user_ids:
-      - "<LINE_USER_ID_3>"
-    lp_slug: "beauty-device-lead-gen"
-    lp_title: "最新美容機器で自家エステ体験を！高水準美容機器プラン"
-    lp_description: |
-      <h1>美容機器でワンランク上の美しさを</h1>
-      <p>医療監修の美容機器で自家にいながらプロ等のケアを実現。使い方から効果的なケア方法まで専門スタッフがサポートします。今なら特別価格で提供中！</p>
-      <p>※個人差があります。効果を保証するものではありません。</p>
-
-      <p>※効果には個人差があります。詳細は医師にご相談ください。</p>
+project: "365bot"
+channel: "line"  # 通知先
+products:
+  - code: "aga_guide"
+    name: "AGA完全ロードマップPDF"
+    price: 1480
+    cvr: 0.05
+    payment_link: "https://buy.stripe.com/xxxxxxxx"
+  - code: "consult_deposit"
+    name: "初回相談デポジット"
+    price: 3000
+    cvr: 0.12
+    payment_link: "https://buy.stripe.com/yyyyyyyy"
+notify:
+  line_user_ids: ["<あなたのLINEユーザーID>"]
