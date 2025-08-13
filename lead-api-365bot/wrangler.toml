@@ -1,0 +1,8 @@
+name = "lead-api-365bot"
+main = "worker.mjs"
+compatibility_date = "2025-08-13"
+
+[vars]
+PAYLINK_AGA_GUIDE = "https://buy.stripe.com/xxxxxxxx"
+PAYLINK_CONSULT   = "https://buy.stripe.com/yyyyyyyy"
+LINE_ADMIN_USER_ID = "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
