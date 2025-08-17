@@ -44,9 +44,29 @@ LINE_BOT_TOKEN = os.getenv("LINE_BOT_TOKEN")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DB_ID = os.getenv("NOTION_DB_ID")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+LINE_USER_ID = os.getenv("LINE_USER_ID", "").strip()
+ def resolve_notify_user_ids(config: dict) -> list:
+    """Return list of LINE user IDs to notify, using config genre list and fallback to LINE_USER_ID."""
+    ids = []
+    for genre in config.get('genre', []):
+        ids += genre.get('notify_user_ids', [])
+    if LINE_USER_ID:
+        ids.append(LINE_USER_ID)
+    # Remove duplicates while preserving order
+    seen = set()
+    result = []
+    for uid in ids:
+        if uid and uid not in seen:
+            seen.add(uid)
+            result.append(uid)
+  
 
 # Validate required environment variables
 for var_name, var_value in {
+
+     
+
+
     "LINE_BOT_TOKEN": LINE_BOT_TOKEN,
     "NOTION_TOKEN": NOTION_TOKEN,
     "NOTION_DB_ID": NOTION_DB_ID,
@@ -272,8 +292,8 @@ def send_daily_kpi_notification(config: Dict[str, any]) -> None:
         days_left_msg = "データ不足"
     message_lines.append(f"達成予測残日数: {days_left_msg}")
     # Send message to all configured recipients per genre
-    for genre in config.get('genre', []):
-        for uid in genre.get('notify_user_ids', []):
+  for uid in resolve_notify_user_ids(config):
+        
             try:
                 send_line_message(uid, "\n".join(message_lines))
             except Exception as e:
@@ -310,7 +330,7 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         logging.warning(f"Product {form_data['product']} not found in config; using first genre as default.")
         selected_genre = config.get('genre', [{}])[0]
     price = selected_genre.get('price', 0)
-    # Compose Notion properties
+    # C        for uid in resolve_notify_user_ids(config):
     properties = {
         "Name": {"title": [{"text": {"content": form_data.get('name', form_data['external_id'])}}]},
         "External_ID": {"rich_text": [{"text": {"content": form_data['external_id']}}]},
@@ -327,9 +347,12 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         page_id = create_notion_lead(properties)
     except Exception as e:
         # Notify error via LINE
-        for genre in config.get('genre', []):
-            for uid in genre.get('notify_user_ids', []):
-                send_line_message(uid, f"リード登録に失敗しました: {e}")
+        #for genre in config.get('genre', []):
+            #for uid in genre.get('notify_user_ids', []):
+                #
+                for uid in resolve_notify_user_ids(config):
+                                send_line_message(uid, f"リード登録失敗: {str(e)}")
+                    send_line_message(uid, f"リード登録に失敗しました: {e}")
         return
     # Generate Stripe checkout link if possible
     checkout_url = create_stripe_checkout_link(selected_genre['product_name'], price)
@@ -338,7 +361,7 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         msg = f"新規リード登録: {form_data['external_id']}. 決済URL: {checkout_url}"
     else:
         msg = f"新規リード登録: {form_data['external_id']}"
-    for uid in selected_genre.get('notify_user_ids', []):
+   for uid in resolve_notify_user_ids(config):
         send_line_message(uid, msg)
 
 
