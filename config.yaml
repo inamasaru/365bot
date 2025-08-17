@@ -1,15 +1,11 @@
 project: "365bot"
-channel: "line"  # 通知先
-products:
-  - code: "aga_guide"
-    name: "AGA完全ロードマップPDF"
+
+genre:
+  - product_name: "AGA完全ロードマップPDF"
     price: 1480
-    cvr: 0.05
-    payment_link: "https://buy.stripe.com/xxxxxxxx"
-  - code: "consult_deposit"
-    name: "初回相談デポジット"
+    expected_cvr: 0.05
+    notify_user_ids: ["<あなたのLINEユーザーID>"]
+  - product_name: "初回相談デポジット"
     price: 3000
-    cvr: 0.12
-    payment_link: "https://buy.stripe.com/yyyyyyyy"
-notify:
-  line_user_ids: ["<あなたのLINEユーザーID>"]
+    expected_cvr: 0.12
+    notify_user_ids: ["<あなたのLINEユーザーID>"]
