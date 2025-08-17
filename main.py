@@ -65,7 +65,7 @@ def resolve_notify_user_ids(config: dict) -> list:
   
 
 #Validate required environment variables
-fr var_name, var_value in {
+rfor var_name, var_value in {
 
      
 
