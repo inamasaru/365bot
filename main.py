@@ -45,7 +45,7 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DB_ID = os.getenv("NOTION_DB_ID")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 LINE_USER_ID = os.getenv("LINE_USER_ID", "").strip()
- def resolve_notify_user_ids(config: dict) -> list:
+ef resolve_notify_user_ids(config: dict) -> list:
     """Return list of LINE user IDs to notify, using config genre list and fallback to LINE_USER_ID."""
     ids = []
     for genre in config.get('genre', []):
