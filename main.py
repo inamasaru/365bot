@@ -295,12 +295,12 @@ def send_daily_kpi_notification(config: Dict[str, any]) -> None:
         days_left_msg = "データ不足"
     message_lines.append(f"達成予測残日数: {days_left_msg}")
     # Send message to all configured recipients per genre
-  for uid in resolve_notify_user_ids(config):
-        
-            try:
-                send_line_message(uid, "\n".join(message_lines))
-            except Exception as e:
-                logging.error(f"Failed to send KPI notification to {uid}: {e}")
+      # Send message to all configured recipients
+    for uid in resolve_notify_user_ids(config):
+        try:
+            send_line_message(uid, "\n".join(message_lines))
+        except Exception as e:
+            logging.error(f"Failed to send KPI notification to {uid}: {e}") {e}")
 
 
 def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any]) -> None:
@@ -353,8 +353,8 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         #for genre in config.get('genre', []):
             #for uid in genre.get('notify_user_ids', []):
                 #
-                for uid in resolve_notify_user_ids(config):
-                                send_line_message(uid, f"リード登録失敗: {str(e)}")
+                                for uid in resolve_notify_user_ids(config):
+                                send_line_message(ui        d, f"リード登録失敗: {str(e)}")
                     send_line_message(uid, f"リード登録に失敗しました: {e}")
         return
     # Generate Stripe checkout link if possible
