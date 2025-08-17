@@ -59,6 +59,8 @@ LINE_USER_ID = os.getenv("LINE_USER_ID", "").strip()
         if uid and uid not in seen:
             seen.add(uid)
             result.append(uid)
+    return result
+
   
 
 # Validate required environment variables
