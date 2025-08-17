@@ -45,7 +45,8 @@ NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 NOTION_DB_ID = os.getenv("NOTION_DB_ID")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 LINE_USER_ID = os.getenv("LINE_USER_ID", "").strip()
-ef resolve_notify_user_ids(config: dict) -> list:
+
+def resolve_notify_user_ids(config: dict) -> list:
     """Return list of LINE user IDs to notify, using config genre list and fallback to LINE_USER_ID."""
     ids = []
     for genre in config.get('genre', []):
@@ -63,8 +64,8 @@ ef resolve_notify_user_ids(config: dict) -> list:
 
   
 
-# Validate required environment variables
-for var_name, var_value in {
+#Validate required environment variables
+fr var_name, var_value in {
 
      
 
@@ -73,7 +74,7 @@ for var_name, var_value in {
     "NOTION_TOKEN": NOTION_TOKEN,
     "NOTION_DB_ID": NOTION_DB_ID,
 }.items():
-    if not var_value:
+  if not var_value:
         logging.error(f"Environment variable {var_name} is required but not set.")
         sys.exit(1)
 
