@@ -1,0 +1,87 @@
+name: Create Stripe Links
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Stripe Products via API
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          echo "🚀 Starting Stripe product creation..."
+          
+          # Create AGA product
+          PRODUCT1=$(curl -s -X POST https://api.stripe.com/v1/products \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "name=AGA完全ロードマップ" \
+            -d "description=薄毛改善のための完全ガイド")
+          
+          PRODUCT1_ID=$(echo $PRODUCT1 | grep -o '"id":"[^"]*' | grep -o '[^"]*$')
+          echo "AGA Product ID: $PRODUCT1_ID"
+          
+          # Create AGA price
+          PRICE1=$(curl -s -X POST https://api.stripe.com/v1/prices \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "product=$PRODUCT1_ID" \
+            -d "unit_amount=4980" \
+            -d "currency=jpy")
+          
+          PRICE1_ID=$(echo $PRICE1 | grep -o '"id":"[^"]*' | grep -o '[^"]*$')
+          echo "AGA Price ID: $PRICE1_ID"
+          
+          # Create AGA Payment Link
+          LINK1=$(curl -s -X POST https://api.stripe.com/v1/payment_links \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "line_items[0][price]=$PRICE1_ID" \
+            -d "line_items[0][quantity]=1" \
+            -d "after_completion[type]=redirect" \
+            -d "after_completion[redirect][url]=https://365bot.pages.dev/thank-you")
+          
+          LINK1_URL=$(echo $LINK1 | grep -o '"url":"[^"]*' | grep -o '[^"]*$')
+          
+          echo "================================"
+          echo "✅ AGA Payment Link Created:"
+          echo "$LINK1_URL"
+          echo "================================"
+          
+          # Create Consultation product
+          PRODUCT2=$(curl -s -X POST https://api.stripe.com/v1/products \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "name=初回相談デポジット" \
+            -d "description=初回30分のオンライン相談")
+          
+          PRODUCT2_ID=$(echo $PRODUCT2 | grep -o '"id":"[^"]*' | grep -o '[^"]*$')
+          echo "Consultation Product ID: $PRODUCT2_ID"
+          
+          # Create Consultation price
+          PRICE2=$(curl -s -X POST https://api.stripe.com/v1/prices \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "product=$PRODUCT2_ID" \
+            -d "unit_amount=3000" \
+            -d "currency=jpy")
+          
+          PRICE2_ID=$(echo $PRICE2 | grep -o '"id":"[^"]*' | grep -o '[^"]*$')
+          echo "Consultation Price ID: $PRICE2_ID"
+          
+          # Create Consultation Payment Link
+          LINK2=$(curl -s -X POST https://api.stripe.com/v1/payment_links \
+            -u "$STRIPE_SECRET_KEY:" \
+            -d "line_items[0][price]=$PRICE2_ID" \
+            -d "line_items[0][quantity]=1" \
+            -d "after_completion[type]=redirect" \
+            -d "after_completion[redirect][url]=https://365bot.pages.dev/consultation-booked")
+          
+          LINK2_URL=$(echo $LINK2 | grep -o '"url":"[^"]*' | grep -o '[^"]*$')
+          
+          echo "================================"
+          echo "✅ Consultation Payment Link Created:"
+          echo "$LINK2_URL"
+          echo "================================"
+          
+          echo ""
+          echo "🎉 SUCCESS! Copy these URLs to your config files:"
+          echo "STRIPE_AGA_LINK: $LINK1_URL"
+          echo "STRIPE_CONSULT_LINK: $LINK2_URL"
