@@ -9,3 +9,7 @@ genre:
     price: 3000
     expected_cvr: 0.12
     notify_user_ids: ["<あなたのLINEユーザーID>"]
+
+stripe:
+  aga_payment_link: "https://buy.stripe.com/test_5kQve0zAG0T8omqYmcFk00"
+  consult_payment_link: "https://buy.stripe.com/test_9864qy23E79j9WyYmcFk01"
