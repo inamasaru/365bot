@@ -1,0 +1,61 @@
+name: Create Stripe Payment Links
+
+on:
+  workflow_dispatch:
+    inputs:
+      aga_price:
+        description: 'AGA PDF price in JPY (default 1480)'
+        default: '1480'
+        required: false
+      consult_price:
+        description: 'Consultation deposit price in JPY (default 3000)'
+        default: '3000'
+        required: false
+      product_type:
+        description: 'Product type to create links for'
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - aga_guide
+        - consultation
+        required: false
+  schedule:
+    # 毎日午前9時（JST）に実行
+    - cron: '0 0 * * *'
+
+jobs:
+  create-payment-links:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install stripe requests pyyaml
+    
+    - name: Create Stripe payment links
+      env:
+        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+        LINE_BOT_TOKEN: ${{ secrets.LINE_BOT_TOKEN }}
+        AGA_PRICE: ${{ github.event.inputs.aga_price || '1480' }}
+        CONSULT_PRICE: ${{ github.event.inputs.consult_price || '3000' }}
+        PRODUCT_TYPE: ${{ github.event.inputs.product_type || 'all' }}
+      run: python scripts/create_stripe_links.py
+    
+    - name: Upload logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: stripe-logs
+        path: logs/
