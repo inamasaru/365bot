@@ -246,9 +246,10 @@ def create_stripe_checkout_link(product_name: str, price: int) -> Optional[str]:
     unit_amount = price * 100
     data = {
         'payment_method_types[]': 'card',
-        'mode': 'payment',
+       'mode': 'subscription',
         'line_items[0][price_data][currency]': 'jpy',
         'line_items[0][price_data][unit_amount]': unit_amount,
+            'line_items[0][price_data][recurring][interval]': 'month',
         'line_items[0][price_data][product_data][name]': product_name,
         'line_items[0][quantity]': 1,
         'success_url': 'https://example.com/success',
