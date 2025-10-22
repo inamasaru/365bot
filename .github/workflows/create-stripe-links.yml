@@ -1,39 +1,26 @@
-name: Create Stripe Payment Links
-
+name: create-stripe-links
 on:
   workflow_dispatch:
     inputs:
       aga_price:
         description: 'AGA PDF price in JPY (default 1480)'
         default: '1480'
-        required: false
       consult_price:
         description: 'Consultation deposit price in JPY (default 3000)'
         default: '3000'
-        required: false
-
 jobs:
-  create-payment-links:
+  run:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install stripe requests
-    
-    - name: Create Stripe payment links
-      env:
-        STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-        AGA_PRICE: ${{ github.event.inputs.aga_price || '1480' }}
-        CONSULT_PRICE: ${{ github.event.inputs.consult_price || '3000' }}
-        PRODUCT_TYPE: 'all'
-      run: python scripts/create_stripe_links.py
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install stripe@^15
+      - name: Create Stripe payment links
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          AGA_PRICE: ${{ github.event.inputs.aga_price }}
+          CONSULT_PRICE: ${{ github.event.inputs.consult_price }}
+          THANKS_URL: "https://<your-worker-url>/thanks"
+        run: node scripts/create_stripe_links.js
