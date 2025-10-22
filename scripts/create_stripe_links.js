@@ -1,73 +1,52 @@
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-const agaPrice = process.env.AGA_PRICE || '1480';
-const consultPrice = process.env.CONSULT_PRICE || '3000';
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
 
-if (!stripeSecretKey) {
-  console.error('STRIPE_SECRET_KEY is not set');
-  process.exit(1);
-}
+const THANKS_URL = process.env.THANKS_URL; // e.g. https://<your-worker-url>/thanks
+const AGA_PRICE = parseInt(process.env.AGA_PRICE || '1480', 10);
+const CONSULT_PRICE = parseInt(process.env.CONSULT_PRICE || '3000', 10);
 
-async function createProduct(name, description) {
-  const params = new URLSearchParams();
-  params.append('name', name);
-  if (description) params.append('description', description);
-  const res = await fetch('https://api.stripe.com/v1/products', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${stripeSecretKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params.toString(),
-  });
-  return await res.json();
-}
-
-async function createPrice(unitAmount, productId) {
-  const params = new URLSearchParams();
-  params.append('unit_amount', unitAmount);
-  params.append('currency', 'jpy');
-  params.append('product', productId);
-  const res = await fetch('https://api.stripe.com/v1/prices', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${stripeSecretKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params.toString(),
-  });
-  return await res.json();
-}
-
-async function createPaymentLink(priceId) {
-  const params = new URLSearchParams();
-  params.append('line_items[0][price]', priceId);
-  params.append('line_items[0][quantity]', '1');
-  const res = await fetch('https://api.stripe.com/v1/payment_links', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${stripeSecretKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params.toString(),
-  });
-  return await res.json();
-}
-
-async function main() {
-  try {
-    const agaProduct = await createProduct('AGA完全ロードマップ', '薄毛改善のための完全ガイド');
-    const agaPriceObj = await createPrice(agaPrice, agaProduct.id);
-    const agaLinkObj = await createPaymentLink(agaPriceObj.id);
-    console.log('AGA payment link:', agaLinkObj.url);
-
-    const consultProduct = await createProduct('初回相談デポジット', '初回相談の予約金');
-    const consultPriceObj = await createPrice(consultPrice, consultProduct.id);
-    const consultLinkObj = await createPaymentLink(consultPriceObj.id);
-    console.log('Consultation deposit link:', consultLinkObj.url);
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
+async function upsertProductAndPrice({ name, sku, unitAmountJpy }) {
+  // Search (metadata.sku ensures uniqueness)
+  let product;
+  const search = await stripe.products.search({ query: `active:'true' AND metadata['sku']:'${sku}'` }).catch(() => ({ data: [] }));
+  if (search.data && search.data.length) {
+    product = search.data[0];
+  } else {
+    product = await stripe.products.create({ name, metadata: { sku } });
   }
+
+  // Find existing price with same unit amount
+  const prices = await stripe.prices.list({ product: product.id, active: true, limit: 50 });
+  let price = prices.data.find(p => p.currency === 'jpy' && p.unit_amount === unitAmountJpy && !p.recurring);
+  if (!price) {
+    price = await stripe.prices.create({
+      currency: 'jpy',
+      unit_amount: unitAmountJpy,
+      product: product.id
+    });
+  }
+
+  // Payment link with redirect
+  const link = await stripe.paymentLinks.create({
+    line_items: [{ price: price.id, quantity: 1 }],
+    after_completion: {
+      type: 'redirect',
+      redirect: { url: `${THANKS_URL}?session_id={CHECKOUT_SESSION_ID}&sku=${encodeURIComponent(sku)}` }
+    },
+    metadata: { sku }
+  });
+
+  return { product, price, link };
 }
 
-main();
+(async () => {
+  const aga = await upsertProductAndPrice({ name: 'AGA完全ロードマップ PDF', sku: 'AGA_PDF', unitAmountJpy: AGA_PRICE });
+  const consult = await upsertProductAndPrice({ name: 'AGAオンライン相談デポジット', sku: 'CONSULT_DEPOSIT', unitAmountJpy: CONSULT_PRICE });
+
+  console.log('PAYMENT_LINKS:');
+  console.log(`AGA_PDF=${aga.link.url}`);
+  console.log(`CONSULT_DEPOSIT=${consult.link.url}`);
+})().catch(e => {
+  console.error(e);
+  process.exit(1);
+});
