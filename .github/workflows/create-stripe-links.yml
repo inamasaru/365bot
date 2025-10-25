@@ -22,5 +22,5 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           AGA_PRICE: ${{ github.event.inputs.aga_price }}
           CONSULT_PRICE: ${{ github.event.inputs.consult_price }}
-          THANKS_URL: "https://<your-worker-url>/thanks"
+          THANKS_URL: "https://lucky-unit-4eb8.2sqycxngzh.workers.dev/thanks"
         run: node scripts/create_stripe_links.js
