@@ -3,39 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>365bot – 商品案内</title>
+  <title>365bot – デジタル商品＆コンサルサービス</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f9f9f9; color: #333; }
-    header { background-color: #4CAF50; color: white; text-align: center; padding: 40px 20px; }
-    header h1 { margin: 0; font-size: 2.5rem; }
-    header p { margin-top: 10px; font-size: 1.2rem; }
-    .container { max-width: 800px; margin: 40px auto; padding: 0 20px; }
-    .product { background-color: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .product h2 { margin-top: 0; }
-    .cta-button { display: inline-block; margin-top: 10px; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px; }
-    footer { text-align: center; padding: 20px; font-size: 0.9rem; color: #666; }
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f7f7f7;
+      color: #333;
+      line-height: 1.6;
+    }
+    header {
+      background-color: #393e46;
+      color: #fff;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2em;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #fff;
+    }
+    .product {
+      margin-bottom: 40px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 30px;
+    }
+    .product:last-child {
+      border-bottom: none;
+    }
+    .product h2 {
+      margin-top: 0;
+      font-size: 1.5em;
+    }
+    .product p {
+      margin: 10px 0 20px;
+    }
+    .btn {
+      display: inline-block;
+      background-color: #00a8e8;
+      color: #fff;
+      padding: 12px 24px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .btn:hover {
+      background-color: #0077b6;
+    }
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.9em;
+      color: #777;
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>365bot 商品案内</h1>
-    <p>効率的に収益を上げるためのデジタル商品・サービスを提供します</p>
+    <h1>365bot 商品・サービスのご案内</h1>
+    <p>あなたの課題を解決するためのデジタル商品とコンサルティングをご提供します。</p>
   </header>
+
   <div class="container">
-    <div class="product">
-      <h2>AGA完全ロードマップPDF</h2>
-      <p>AGA治療や育毛に関する完全ロードマップをまとめた電子書籍です。医師監修の情報で信頼性が高く、初心者でもわかりやすい内容になっています。</p>
+    <section class="product">
+      <h2>AGA完全ロードマップPDF（電子書籍）</h2>
+      <p>
+        AGA対策の知識を体系的にまとめたガイドブックです。自己学習に最適な構成で、すぐに実践できるアクションプランを提示しています。
+      </p>
       <p><strong>価格：</strong>¥1,480</p>
-      <a class="cta-button" href="https://buy.stripe.com/test_5KqV0eZA6T80nqYmcFk80">今すぐ購入</a>
-    </div>
-    <div class="product">
+      <!-- 本番環境の支払いリンクに置き換えてください -->
+      <a class="btn" href="https://buy.stripe.com/XXXXXXXXXXXXXX">購入する</a>
+    </section>
+
+    <section class="product">
       <h2>相談料デポジット</h2>
-      <p>専門家との1対1相談のためのデポジットです。相談後に商品購入へ充当されるため、気軽にご相談いただけます。</p>
+      <p>
+        専門家によるオンライン相談の予約用デポジットです。相談後にデポジットはご利用料金に充当されます。
+      </p>
       <p><strong>価格：</strong>¥3,000</p>
-      <a class="cta-button" href="https://buy.stripe.com/test_9864y23E79jQYmcFk80">相談を予約</a>
-    </div>
-    <p>詳細やご不明点は、LINEボット経由でお気軽にお問い合わせください。</p>
+      <!-- 本番環境の支払いリンクに置き換えてください -->
+      <a class="btn" href="https://buy.stripe.com/YYYYYYYYYYYYYY">相談を予約する</a>
+    </section>
+
+    <p>その他ご不明点やご質問は、LINEボット経由でお気軽にお問い合わせください。</p>
   </div>
+
   <footer>
     &copy; 2025 365bot. All rights reserved.
   </footer>
