@@ -22,11 +22,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install dependencies
-        run: npm install node-fetch@3
+      - name: Install stripe module
+        run: |
+          npm init -y
+          npm install stripe@^15
       - name: Create Stripe payment links
         env:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           AGA_PRICE: ${{ github.event.inputs.aga_price }}
           CONSULT_PRICE: ${{ github.event.inputs.consult_price }}
+          THANKS_URL: "https://lucky-unit-4eb8.2sqycxngzh.workers.dev/thanks"
         run: node scripts/create_stripe_links.js
