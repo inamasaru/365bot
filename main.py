@@ -300,8 +300,8 @@ def send_daily_kpi_notification(config: Dict[str, any]) -> None:
     for uid in resolve_notify_user_ids(config):
         try:
             send_line_message(uid, "\n".join(message_lines))
-        except Excepti
-            logging.error(f"Failed to send KPI notification to {uid}: {e}")
+except Exception as e:
+               logging.error(f"Failed to send KPI notification to {uid}: {e}")
 
 
 def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any]) -> None:
