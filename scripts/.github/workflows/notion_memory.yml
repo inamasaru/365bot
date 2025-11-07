@@ -1,0 +1,36 @@
+name: Update Notion Memory
+
+on:
+  schedule:
+    - cron: '0 23 * * *'  # JST 8:00 corresponds to 23:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-memory:
+    runs-on: ubuntu-latest
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      DATABASE_ID: ${{ secrets.DATABASE_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Notion memory update script
+        run: |
+          python notion_memory.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          DATABASE_ID: ${{ secrets.DATABASE_ID }}
+          # MEMORY_USER と MEMORY_TEXT を設定すると自動で記憶を追加できます
+          MEMORY_USER: "稲村優"
+          MEMORY_TEXT: ""
