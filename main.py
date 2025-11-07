@@ -1,4 +1,4 @@
-e#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 main.py
 
@@ -25,11 +25,9 @@ awareness without exposing sensitive information.
 
 import os
 import sys
-import json
 import yaml
-import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Optional
 
 import requests
@@ -64,17 +62,13 @@ def resolve_notify_user_ids(config: dict) -> list:
 
   
 
-#Validate required environment variables
+# Validate required environment variables
 for var_name, var_value in {
-
-     
-
-
     "LINE_BOT_TOKEN": LINE_BOT_TOKEN,
     "NOTION_TOKEN": NOTION_TOKEN,
     "NOTION_DB_ID": NOTION_DB_ID,
 }.items():
-  if not var_value:
+    if not var_value:
         logging.error(f"Environment variable {var_name} is required but not set.")
         sys.exit(1)
 
@@ -246,10 +240,10 @@ def create_stripe_checkout_link(product_name: str, price: int) -> Optional[str]:
     unit_amount = price * 100
     data = {
         'payment_method_types[]': 'card',
-       'mode': 'subscription',
+        'mode': 'subscription',
         'line_items[0][price_data][currency]': 'jpy',
         'line_items[0][price_data][unit_amount]': unit_amount,
-            'line_items[0][price_data][recurring][interval]': 'month',
+        'line_items[0][price_data][recurring][interval]': 'month',
         'line_items[0][price_data][product_data][name]': product_name,
         'line_items[0][quantity]': 1,
         'success_url': 'https://example.com/success',
@@ -296,12 +290,11 @@ def send_daily_kpi_notification(config: Dict[str, any]) -> None:
         days_left_msg = "データ不足"
     message_lines.append(f"達成予測残日数: {days_left_msg}")
     # Send message to all configured recipients per genre
-      # Send message to all configured recipients
     for uid in resolve_notify_user_ids(config):
         try:
             send_line_message(uid, "\n".join(message_lines))
         except Exception as e:
-            logging.error(f"Failed to send KPI notification to {uid}: {e}") {e}")
+            logging.error(f"Failed to send KPI notification to {uid}: {e}")
 
 
 def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any]) -> None:
@@ -334,7 +327,7 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         logging.warning(f"Product {form_data['product']} not found in config; using first genre as default.")
         selected_genre = config.get('genre', [{}])[0]
     price = selected_genre.get('price', 0)
-    # C        for uid in resolve_notify_user_ids(config):
+    # Create lead in Notion
     properties = {
         "Name": {"title": [{"text": {"content": form_data.get('name', form_data['external_id'])}}]},
         "External_ID": {"rich_text": [{"text": {"content": form_data['external_id']}}]},
@@ -349,14 +342,15 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
     }
     try:
         page_id = create_notion_lead(properties)
+        logging.info(f"Lead {form_data['external_id']} created in Notion with page ID {page_id}")
     except Exception as e:
         # Notify error via LINE
-        #for genre in config.get('genre', []):
-            #for uid in genre.get('notify_user_ids', []):
-                #
-                                for uid in resolve_notify_user_ids(config):
-                                send_line_message(ui        d, f"リード登録失敗: {str(e)}")
-                    send_line_message(uid, f"リード登録に失敗しました: {e}")
+        for uid in resolve_notify_user_ids(config):
+            try:
+                send_line_message(uid, f"リード登録に失敗しました: {e}")
+            except Exception as line_error:
+                logging.error(f"Failed to notify {uid} about lead registration error: {line_error}")
+        logging.error(f"Failed to create Notion lead: {e}")
         return
     # Generate Stripe checkout link if possible
     checkout_url = create_stripe_checkout_link(selected_genre['product_name'], price)
@@ -365,8 +359,11 @@ def process_lead_registration(form_data: Dict[str, str], config: Dict[str, any])
         msg = f"新規リード登録: {form_data['external_id']}. 決済URL: {checkout_url}"
     else:
         msg = f"新規リード登録: {form_data['external_id']}"
-   for uid in resolve_notify_user_ids(config):
-        send_line_message(uid, msg)
+    for uid in resolve_notify_user_ids(config):
+        try:
+            send_line_message(uid, msg)
+        except Exception as line_error:
+            logging.error(f"Failed to send lead notification to {uid}: {line_error}")
 
 
 def main():
