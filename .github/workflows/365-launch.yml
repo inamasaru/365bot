@@ -1,4 +1,5 @@
 name: 365-launch
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,11 +12,13 @@ on:
       cf_project:
         description: 'Cloudflare Pages Project name'
         default: 'aga-365-launch'
+
 jobs:
   launch:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     env:
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -23,8 +26,10 @@ jobs:
       AGA_PRICE: ${{ github.event.inputs.aga_price }}
       CONSULT_PRICE: ${{ github.event.inputs.consult_price }}
       CF_PROJECT: ${{ github.event.inputs.cf_project }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -34,163 +39,182 @@ jobs:
         run: |
           mkdir -p scripts public build marketing
 
-          cat > scripts/build_and_links.js <<'JS'
+          cat > scripts/build_and_links.js << 'JS'
           const fs = require('fs');
-          const path = require('path');
-
           const key = process.env.STRIPE_SECRET_KEY;
-          if (!key) { console.error('Missing STRIPE_SECRET_KEY'); process.exit(1); }
 
-          const AGA_PRICE = parseInt(process.env.AGA_PRICE || '1480', 10);
-          const CONSULT_PRICE = parseInt(process.env.CONSULT_PRICE || '3000', 10);
-
-          function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
-
-          async function stripePost(p, form, idemKey){
-            const res = await fetch(`https://api.stripe.com/v1/${p}`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${key}`,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                ...(idemKey ? {'Idempotency-Key': idemKey} : {})
-              },
-              body: new URLSearchParams(form)
-            });
-            const data = await res.json();
-            if (!res.ok) {
-              console.error('Stripe API Error:', data);
-              process.exit(1);
-            }
-            return data;
+          if (!key) {
+            console.error("Missing STRIPE_SECRET_KEY");
+            process.exit(1);
           }
 
-          async function createPaymentLink(name, amount, desc){
+          const AGA_PRICE = parseInt(process.env.AGA_PRICE || "1480");
+          const CONSULT_PRICE = parseInt(process.env.CONSULT_PRICE || "3000");
+
+          function slugify(s){
+            return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+          }
+
+          async function stripePost(endpoint, params, idempotency) {
+            const res = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${key}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+                ...(idempotency ? { "Idempotency-Key": idempotency } : {})
+              },
+              body: new URLSearchParams(params),
+            });
+
+            const json = await res.json();
+            if (!res.ok) {
+              console.error("Stripe error:", json);
+              process.exit(1);
+            }
+            return json;
+          }
+
+          async function createPaymentLink(name, amount, desc) {
             const slug = slugify(`${name}-${amount}`);
-            const product = await stripePost('products', { name, description: desc }, `prod-${slug}`);
-            const price = await stripePost('prices', {
-              currency: 'jpy',
+
+            const product = await stripePost("products", {
+              name,
+              description: desc,
+            }, `prod-${slug}`);
+
+            const price = await stripePost("prices", {
+              currency: "jpy",
               unit_amount: String(amount),
-              product: product.id
+              product: product.id,
             }, `price-${slug}`);
-            const link = await stripePost('payment_links', {
-              'line_items[0][price]': price.id,
-              'line_items[0][quantity]': '1',
-              'after_completion[type]': 'hosted_confirmation'
+
+            const link = await stripePost("payment_links", {
+              "line_items[0][price]": price.id,
+              "line_items[0][quantity]": "1",
+              "after_completion[type]": "hosted_confirmation",
             }, `plink-${slug}`);
-            return { product, price, link };
+
+            return link.url;
           }
 
           (async () => {
             const aga = await createPaymentLink(
-              'AGA完全ロードマップ（PDF）', AGA_PRICE, 'すぐ読める完全ロードマップPDF'
+              "AGA完全ロードマップ（PDF）",
+              AGA_PRICE,
+              "すぐ読める完全ロードマップPDF"
             );
+
             const consult = await createPaymentLink(
-              'AGA相談デポジット', CONSULT_PRICE, '優先枠の確保用デポジット（後日スケジュール調整）'
+              "AGA相談デポジット",
+              CONSULT_PRICE,
+              "優先枠の確保用デポジット（後日スケジュール調整）"
             );
 
-            const links = {
-              AGA_PDF: aga.link.url,
-              CONSULT_DEPOSIT: consult.link.url
-            };
+            fs.writeFileSync(
+              "build/payment_links.json",
+              JSON.stringify(
+                {
+                  AGA_PDF: aga,
+                  CONSULT_DEPOSIT: consult,
+                },
+                null,
+                2
+              )
+            );
 
-            fs.mkdirSync('build', { recursive: true });
-            fs.writeFileSync('build/payment_links.json', JSON.stringify(links, null, 2));
+            const utm = "?utm_source=x&utm_medium=organic&utm_campaign=aga_launch_d1";
 
-            const utm = '?utm_source=x&utm_medium=organic&utm_campaign=aga_launch_d1';
-
-            const commonHead = `
+            const head = `
 <!doctype html><html lang="ja"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AGA最短ロードマップ</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;line-height:1.6;margin:0;background:#fff;color:#111}
-.container{max-width:880px;margin:0 auto;padding:24px}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;padding:0;line-height:1.6;background:#fff;color:#111}
+.container{max-width:860px;margin:0 auto;padding:24px}
 .btn{display:inline-block;padding:12px 18px;border-radius:8px;text-decoration:none;border:1px solid #111}
 .btn-primary{background:#111;color:#fff}
 .btn-accent{background:#f5f5f5;color:#111}
 .hero{padding:28px 0}
 .card{background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px;margin:16px 0}
 footer{margin-top:48px;font-size:12px;color:#555}
-</style>
-</head><body><div class="container">`;
+</style></head><body><div class="container">`;
 
             const legal = `
 <section class="card">
-  <h3>特定商取引法に基づく表記</h3>
-  <p>販売事業者：記載</p>
-  <p>所在地：記載</p>
-  <p>連絡先：記載（メール）※原則24時間以内に返信</p>
-  <p>販売価格：各商品ページに税込表示</p>
-  <p>支払方法：クレジットカード（Stripe）</p>
-  <p>商品の引き渡し時期：決済完了後すぐにダウンロード/視聴可能</p>
-  <p>返品・返金：デジタル商品の性質上、原則不可（誤課金等は個別対応）</p>
+<h3>特定商取引法に基づく表記</h3>
+<p>販売事業者：記載</p>
+<p>所在地：記載</p>
+<p>連絡先：記載（メール）※原則24時間以内に返信</p>
+<p>販売価格：各商品ページに税込表示</p>
+<p>支払方法：クレジットカード（Stripe）</p>
+<p>引き渡し時期：決済完了後すぐにダウンロード可能</p>
+<p>返品：デジタル商品の性質上、原則不可</p>
 </section>
 <footer>© 2025</footer>`;
 
-            const indexHtml = `
-${commonHead}
-<section class="hero">
-  <h1>AGAの最短ロードマップ（PDF）</h1>
-  <p>初診から3ヶ月で結果を出すための行動プランを1冊に凝縮。費用感・薬・病院選び・生活改善まで。</p>
-  <p><a class="btn btn-primary" href="${links.AGA_PDF}${utm}" target="_blank" rel="noopener">今すぐ購入（¥${AGA_PRICE.toLocaleString()}）</a>
-     <a class="btn btn-accent" href="./consult.html" >相談したい</a></p>
-</section>
-<section class="card"><h2>内容の一部</h2>
-<ul>
-  <li>病院・薬・生活の「費用対効果」</li>
-  <li>3ヶ月アクションプラン（週次）</li>
-  <li>やってはいけない落とし穴</li>
-</ul>
-</section>
-${legal}
-</div></body></html>`;
+            const links = JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
 
-            const consultHtml = `
-${commonHead}
+            fs.writeFileSync("public/index.html",
+`${head}
+<h1>AGAの最短ロードマップ（PDF）</h1>
+<p>初診から3ヶ月で結果を出すための行動プランを1冊に凝縮。</p>
+<p><a class="btn btn-primary" href="${links.AGA_PDF}${utm}" target="_blank">今すぐ購入（¥${AGA_PRICE}）</a>
+<a class="btn btn-accent" href="./consult.html">相談したい</a></p>
+${legal}
+</div></body></html>`
+            );
+
+            fs.writeFileSync("public/consult.html",
+`${head}
 <h1>優先相談デポジット</h1>
-<p>初回30分で状況整理と最短アクションを設計。枠確保のためデポジット制。</p>
-<p><a class="btn btn-primary" href="${links.CONSULT_DEPOSIT}${utm}" target="_blank" rel="noopener">優先相談枠を確保（¥${CONSULT_PRICE.toLocaleString()}）</a>
-   <a class="btn btn-accent" href="./index.html">PDFに戻る</a></p>
+<p>30分で状況整理と最短アクションを設計。</p>
+<p><a class="btn btn-primary" href="${links.CONSULT_DEPOSIT}${utm}" target="_blank">優先相談枠を確保（¥${CONSULT_PRICE}）</a>
+<a class="btn btn-accent" href="./index.html">PDFに戻る</a></p>
 ${legal}
-</div></body></html>`;
+</div></body></html>`
+            );
 
-            fs.writeFileSync('public/index.html', indexHtml);
-            fs.writeFileSync('public/consult.html', consultHtml);
-            fs.writeFileSync('public/robots.txt', 'User-agent: *\nAllow: /\n');
-          })().catch(e=>{ console.error(e); process.exit(1); });
+            fs.writeFileSync("public/robots.txt", "User-agent: *\nAllow: /\n");
+          })();
           JS
 
-          cat > scripts/get_pages_url.js <<'JS'
-          const { execSync } = require('child_process');
-          const project = process.env.CF_PROJECT || 'aga-365-launch';
-          try{
-            const out = execSync('wrangler pages project list --json', { encoding:'utf8' });
-            const arr = JSON.parse(out);
+          cat > scripts/get_pages_url.js << 'JS'
+          const { execSync } = require("child_process");
+          const fs = require("fs");
+          const project = process.env.CF_PROJECT;
+
+          try {
+            const json = execSync("wrangler pages project list --json", { encoding:"utf8" });
+            const arr = JSON.parse(json);
             const hit = arr.find(p => p.name === project);
-            if(!hit || !hit.production_domain){ throw new Error('Project not found'); }
-            console.log('https://' + hit.production_domain);
-          }catch(e){
-            // Fallback: try parsing deploy.log
-            try{
-              const fs = require('fs');
-              const log = fs.readFileSync('deploy.log','utf8');
-              const m = log.match(/https?:\/\/[a-z0-9-]+\.pages\.dev/);
-              if(m){ console.log(m[0]); process.exit(0); }
-            }catch(_){}
-            console.log('https://'+project+'.pages.dev');
+            if (hit && hit.production_domain) {
+              console.log(`https://${hit.production_domain}`);
+              process.exit(0);
+            }
+          } catch(e){}
+
+          if (fs.existsSync("deploy.log")) {
+            const m = fs.readFileSync("deploy.log","utf8").match(/https?:\/\/[a-z0-9-]+\.pages\.dev/);
+            if (m) {
+              console.log(m[0]);
+              process.exit(0);
+            }
           }
+
+          console.log(`https://${project}.pages.dev`);
           JS
 
-      - name: Build static site & Stripe links
+      - name: Build site & links
         run: node scripts/build_and_links.js
 
-      - name: Install wrangler
+      - name: Install Wrangler
         run: npm i -g wrangler@3
 
       - name: Write wrangler.toml
         shell: bash
         run: |
-          cat > wrangler.toml <<EOF
+          cat > wrangler.toml << EOF
           account_id = "${CLOUDFLARE_ACCOUNT_ID}"
           compatibility_date = "2025-01-10"
           EOF
@@ -202,66 +226,73 @@ ${legal}
       - name: Resolve Pages URL
         run: node scripts/get_pages_url.js > pages_url.txt
 
-      - name: Commit generated assets
+      - name: Commit generated files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts public wrangler.toml build deploy.log pages_url.txt || true
-          git commit -m "chore: build & deploy LP with Stripe links" || true
+          git add scripts public build deploy.log pages_url.txt wrangler.toml || true
+          git commit -m "chore: build + deploy LP" || true
           git push || true
 
-      - name: Marketing copy (tweets & note draft)
+      - name: Marketing copy
         run: |
           node -e '
-            const fs=require("fs");
-            const links=JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
-            const site=fs.readFileSync("pages_url.txt","utf8").trim();
-            const A=links.AGA_PDF, C=links.CONSULT_DEPOSIT;
+            const fs = require("fs");
+            const links = JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
+            const site = fs.readFileSync("pages_url.txt","utf8").trim();
             const utm="?utm_source=x&utm_medium=organic&utm_campaign=aga_launch_d1";
-            const tw1=`【AGAで悩む人へ】今日から始める実践ロードマップを1冊に。\n➡ ${A}${utm}`;
-            const tw2=`30分で読めるAGA最短ロードマップ（費用対効果まで整理）\n今すぐ読む➡ ${A}${utm}`;
-            const tw3=`優先相談枠（デポジット¥3,000）を本日だけ開放。\n➡ ${C}${utm}`;
+
+            const tw1 = `【AGAで悩む人へ】最短ロードマップを公開。\n➡ ${links.AGA_PDF}${utm}`;
+            const tw2 = `30分で読めるAGA最短ロードマップ。\n今すぐ読む➡ ${links.AGA_PDF}${utm}`;
+            const tw3 = `優先相談枠（¥3,000）本日開放。\n➡ ${links.CONSULT_DEPOSIT}${utm}`;
             const thread = [
-              "1/ AGAは情報の非対称性で損しがち。全体像の把握が最短ルートです。",
-              "2/ PDFに初診〜3ヶ月の行動を集約（薬/病院/生活/費用）。",
-              `3/ 30分で読めます➡ ${A}${utm} 迷ったらDMどうぞ。`
+              "1/ AGAは情報の非対称性で損する。最短ルートを整理しました。",
+              "2/ PDFに初診〜3ヶ月の実務を整理（薬/病院/生活/費用）。",
+              `3/ 今すぐ読む➡ ${links.AGA_PDF}${utm}`
             ].join("\n");
-            const note = `# AGAの最短ロードマップ：3ヶ月で変わる\n\n`+
-              `広告の前に、まずは全体像。初診から3ヶ月で結果を出すための実務を1冊に整理しました。`+
-              `\n\n## 収録内容\n- 病院・薬・生活の費用対効果\n- 3ヶ月アクションプラン（週次）\n- 落とし穴Q&A\n\n`+
-              `---\n**PDF（¥1,480）** 👉 ${A}${utm}\n\n`+
-              `**優先相談デポジット（¥3,000）** 👉 ${C}${utm}\n\n`+
-              `公開LP: ${site}\n`;
+
             fs.writeFileSync("marketing/tweets.txt",[tw1,"",tw2,"",tw3,"",thread].join("\n"));
-            fs.writeFileSync("marketing/note.md",note);
+            fs.writeFileSync("marketing/note.md",
+`# AGA最短ロードマップ（PDF）
+
+## 収録内容
+- 病院・薬・生活の費用対効果
+- 3ヶ月アクションプラン
+- 落とし穴Q&A
+
+**PDF（¥1,480）** 👉 ${links.AGA_PDF}${utm}
+
+**優先相談デポジット（¥3,000）** 👉 ${links.CONSULT_DEPOSIT}${utm}
+
+公開LP: ${site}
+`);
           '
 
       - name: Summary
         run: |
           node -e '
-            const fs=require("fs");
-            const links=JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
-            const site=fs.readFileSync("pages_url.txt","utf8").trim();
-            const s = `
+            const fs = require("fs");
+            const links = JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
+            const site = fs.readFileSync("pages_url.txt","utf8").trim();
+            const out = `
 ## Live URLs
 - Site: ${site}
-- AGA PDF: ${links.AGA_PDF}
-- Consult Deposit: ${links.CONSULT_DEPOSIT}
+- PDF: ${links.AGA_PDF}
+- Consult: ${links.CONSULT_DEPOSIT}
 
-## Ready-to-post
-- tweets: marketing/tweets.txt
-- note:   marketing/note.md
+## Files
+- marketing/tweets.txt
+- marketing/note.md
 `;
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, s);
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out);
           '
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: 365-launch-outputs
           path: |
             public
-            build/payment_links.json
+            build
             deploy.log
             pages_url.txt
             marketing
