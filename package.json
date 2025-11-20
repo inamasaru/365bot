@@ -1,0 +1,16 @@
+{
+  "name": "365bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Automation scripts for 365bot",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "agent:notion-resend": "node scripts/agent-notion-resend.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.14",
+    "dayjs": "^1.11.13",
+    "resend": "^3.2.0"
+  }
+}

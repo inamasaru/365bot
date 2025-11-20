@@ -9,6 +9,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,10 +19,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate required secrets
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
         run: |
-          npm install @notionhq/client resend dayjs
+          missing=()
+          for name in NOTION_TOKEN NOTION_DB_ID RESEND_API_KEY RESEND_FROM; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Missing required secrets: ${missing[*]}" >&2
+            exit 1
+          fi
 
       - name: Run agent
         env:
@@ -28,4 +48,4 @@ jobs:
           NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
-        run: node scripts/agent-notion-resend.js
+        run: npm run agent:notion-resend

@@ -14,6 +14,21 @@ const makeHtml = (name) => `
 `;
 
 (async () => {
+  // 必須環境変数の存在チェック
+  const missing = [
+    ['NOTION_TOKEN', NOTION_TOKEN],
+    ['NOTION_DB_ID', NOTION_DB_ID],
+    ['RESEND_API_KEY', RESEND_API_KEY],
+    ['RESEND_FROM', FROM_EMAIL],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length) {
+    console.error(`Missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+
   const notion = new Client({ auth: NOTION_TOKEN });
   const resend = new Resend(RESEND_API_KEY);
 
