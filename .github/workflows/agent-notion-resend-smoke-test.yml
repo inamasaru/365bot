@@ -1,0 +1,74 @@
+name: agent-notion-resend-smoke-test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate required secrets
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+        run: |
+          missing=()
+          for name in NOTION_TOKEN NOTION_DB_ID RESEND_API_KEY RESEND_FROM; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Missing required secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Notion API connectivity
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: |
+          status=$(curl -s -o /tmp/notion_me.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${NOTION_TOKEN}" \
+            -H "Notion-Version: 2022-06-28" \
+            https://api.notion.com/v1/users/me)
+          if [ "$status" != "200" ]; then
+            echo "Notion API check failed with status $status"
+            cat /tmp/notion_me.json
+            exit 1
+          fi
+          echo "Notion API reachable"
+
+      - name: Resend API connectivity
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          status=$(curl -s -o /tmp/resend_domains.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${RESEND_API_KEY}" \
+            https://api.resend.com/domains)
+          if [ "$status" != "200" ]; then
+            echo "Resend API check failed with status $status"
+            cat /tmp/resend_domains.json
+            exit 1
+          fi
+          echo "Resend API reachable"
+
+      - name: Print configuration summary (redacted)
+        env:
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+        run: |
+          echo "NOTION_DB_ID set: $( [ -n "$NOTION_DB_ID" ] && echo yes || echo no )"
+          echo "RESEND_FROM set: $( [ -n "$RESEND_FROM" ] && echo yes || echo no )"
