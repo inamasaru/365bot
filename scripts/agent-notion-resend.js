@@ -44,7 +44,7 @@ async function fetchUncontactedPages(notionClient) {
         property: 'Contacted',
         checkbox: { equals: false },
       },
-      sorts: [{ property: 'Created time', direction: 'ascending' }],
+      sorts: [{ timestamp: 'created_time', direction: 'ascending' }],
     });
 
     pages.push(...response.results);
@@ -83,6 +83,17 @@ async function markAsContacted(notionClient, pageId) {
   });
 }
 
+function extractPropertyText(property) {
+  if (!property) return '';
+  if (property.type === 'title' || Array.isArray(property.title)) {
+    return property.title?.[0]?.plain_text || '';
+  }
+  if (property.type === 'rich_text' || Array.isArray(property.rich_text)) {
+    return property.rich_text?.[0]?.plain_text || '';
+  }
+  return '';
+}
+
 async function main() {
   validateEnv();
 
@@ -92,9 +103,13 @@ async function main() {
   const pages = await fetchUncontactedPages(notion);
   console.log(`Found ${pages.length} new leads`);
 
+  if (pages.length === 0) {
+    return;
+  }
+
   for (const page of pages) {
     const props = page.properties || {};
-    const name = props?.Name?.title?.[0]?.plain_text || '';
+    const name = extractPropertyText(props.Name) || extractPropertyText(props.NameJP);
     const email = props?.Email?.email || '';
 
     if (!email) {
