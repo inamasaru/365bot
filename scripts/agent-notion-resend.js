@@ -3,9 +3,11 @@ const { Resend } = require('resend');
 const dayjs = require('dayjs');
 
 const NOTION_TOKEN = process.env.NOTION_TOKEN;
-const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID || process.env.NOTION_DB_ID;
+const NOTION_DATABASE_ID = process.env.NOTION_DATABASE_ID;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.RESEND_FROM || 'onboarding@resend.dev';
+const FROM_EMAIL = process.env.FROM_EMAIL;
+const TO_EMAIL = process.env.TO_EMAIL;
+
 const SUBJECT = 'ご登録ありがとうございます';
 
 const makeHtml = (name) => `
@@ -13,6 +15,22 @@ const makeHtml = (name) => `
   <p>お問い合わせありがとうございます。担当より順次ご案内いたします。</p>
   <p>本メールは自動送信（エージェント）です。</p>
 `;
+
+function validateEnv() {
+  const required = [
+    ['NOTION_TOKEN', NOTION_TOKEN],
+    ['NOTION_DATABASE_ID', NOTION_DATABASE_ID],
+    ['RESEND_API_KEY', RESEND_API_KEY],
+    ['FROM_EMAIL', FROM_EMAIL],
+    ['TO_EMAIL', TO_EMAIL],
+  ];
+
+  const missing = required.filter(([, value]) => !value).map(([key]) => key);
+
+  if (missing.length) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+}
 
 async function fetchUncontactedPages(notionClient) {
   const pages = [];
@@ -37,9 +55,15 @@ async function fetchUncontactedPages(notionClient) {
 }
 
 async function sendEmail(resendClient, { email, name }) {
+  const recipients = [...new Set([email, TO_EMAIL].filter(Boolean))];
+
+  if (recipients.length === 0) {
+    throw new Error('No recipients provided');
+  }
+
   const { error } = await resendClient.emails.send({
     from: FROM_EMAIL,
-    to: email,
+    to: recipients,
     subject: SUBJECT,
     html: makeHtml(name),
   });
@@ -60,19 +84,7 @@ async function markAsContacted(notionClient, pageId) {
 }
 
 async function main() {
-  const missing = [
-    ['NOTION_TOKEN', NOTION_TOKEN],
-    ['NOTION_DATABASE_ID', NOTION_DATABASE_ID],
-    ['RESEND_API_KEY', RESEND_API_KEY],
-    ['RESEND_FROM', FROM_EMAIL],
-  ]
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  if (missing.length) {
-    console.error(`Missing required environment variables: ${missing.join(', ')}`);
-    process.exit(1);
-  }
+  validateEnv();
 
   const notion = new Client({ auth: NOTION_TOKEN });
   const resend = new Resend(RESEND_API_KEY);
@@ -81,26 +93,29 @@ async function main() {
   console.log(`Found ${pages.length} new leads`);
 
   for (const page of pages) {
-    const props = page.properties;
+    const props = page.properties || {};
     const name = props?.Name?.title?.[0]?.plain_text || '';
     const email = props?.Email?.email || '';
 
     if (!email) {
-      console.log(`Skip page ${page.id} (no email)`);
-      continue;
+      console.log(`Page ${page.id} has no lead email; sending to fallback only.`);
     }
 
     try {
       await sendEmail(resend, { email, name });
       await markAsContacted(notion, page.id);
-      console.log(`Sent to ${email}`);
+      console.log(`Processed page ${page.id} for ${email || 'fallback recipient'}`);
     } catch (error) {
       console.error('Error handling page', page.id, error?.message || error);
     }
   }
 }
 
-main().catch((error) => {
-  console.error('Unhandled error', error?.message || error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('Unhandled error', error?.message || error);
+    process.exit(1);
+  });
