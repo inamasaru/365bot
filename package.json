@@ -12,5 +12,8 @@
     "@notionhq/client": "^2.2.14",
     "dayjs": "^1.11.13",
     "resend": "^3.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.98.0"
   }
 }

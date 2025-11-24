@@ -33,6 +33,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
 
       - name: Create scripts
         shell: bash
@@ -185,7 +189,7 @@ ${legal}
           const project = process.env.CF_PROJECT;
 
           try {
-            const json = execSync("wrangler pages project list --json", { encoding:"utf8" });
+            const json = execSync("npx wrangler pages project list --json", { encoding:"utf8" });
             const arr = JSON.parse(json);
             const hit = arr.find(p => p.name === project);
             if (hit && hit.production_domain) {
@@ -208,9 +212,6 @@ ${legal}
       - name: Build site & links
         run: node scripts/build_and_links.js
 
-      - name: Install Wrangler
-        run: npm i -g wrangler@3
-
       - name: Write wrangler.toml
         shell: bash
         run: |
@@ -221,7 +222,7 @@ ${legal}
 
       - name: Deploy to Cloudflare Pages
         run: |
-          wrangler pages deploy ./public --project-name "$CF_PROJECT" | tee deploy.log
+          npx wrangler pages deploy ./public --project-name "$CF_PROJECT" | tee deploy.log
 
       - name: Resolve Pages URL
         run: node scripts/get_pages_url.js > pages_url.txt
