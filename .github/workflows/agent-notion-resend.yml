@@ -16,11 +16,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install deps
-        run: |
-          npm install
+      - name: Install dependencies
+        run: npm install
 
-      - name: Run agent
+      - name: Run agent-notion-resend
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}

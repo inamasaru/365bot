@@ -1,6 +1,9 @@
 name: 365-launch
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       aga_price:
@@ -23,9 +26,9 @@ jobs:
       STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      AGA_PRICE: ${{ github.event.inputs.aga_price }}
-      CONSULT_PRICE: ${{ github.event.inputs.consult_price }}
-      CF_PROJECT: ${{ github.event.inputs.cf_project }}
+      AGA_PRICE: ${{ github.event.inputs.aga_price || '1480' }}
+      CONSULT_PRICE: ${{ github.event.inputs.consult_price || '3000' }}
+      CF_PROJECT: ${{ github.event.inputs.cf_project || 'aga-365-launch' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -48,31 +51,31 @@ jobs:
           const key = process.env.STRIPE_SECRET_KEY;
 
           if (!key) {
-            console.error("Missing STRIPE_SECRET_KEY");
+            console.error('Missing STRIPE_SECRET_KEY');
             process.exit(1);
           }
 
-          const AGA_PRICE = parseInt(process.env.AGA_PRICE || "1480");
-          const CONSULT_PRICE = parseInt(process.env.CONSULT_PRICE || "3000");
+          const AGA_PRICE = parseInt(process.env.AGA_PRICE || '1480');
+          const CONSULT_PRICE = parseInt(process.env.CONSULT_PRICE || '3000');
 
-          function slugify(s){
-            return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+          function slugify(s) {
+            return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
           }
 
           async function stripePost(endpoint, params, idempotency) {
             const res = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
-              method: "POST",
+              method: 'POST',
               headers: {
                 Authorization: `Bearer ${key}`,
-                "Content-Type": "application/x-www-form-urlencoded",
-                ...(idempotency ? { "Idempotency-Key": idempotency } : {})
+                'Content-Type': 'application/x-www-form-urlencoded',
+                ...(idempotency ? { 'Idempotency-Key': idempotency } : {}),
               },
               body: new URLSearchParams(params),
             });
 
             const json = await res.json();
             if (!res.ok) {
-              console.error("Stripe error:", json);
+              console.error('Stripe error:', json);
               process.exit(1);
             }
             return json;
@@ -81,125 +84,92 @@ jobs:
           async function createPaymentLink(name, amount, desc) {
             const slug = slugify(`${name}-${amount}`);
 
-            const product = await stripePost("products", {
+            const product = await stripePost('products', {
               name,
               description: desc,
             }, `prod-${slug}`);
 
-            const price = await stripePost("prices", {
-              currency: "jpy",
+            const price = await stripePost('prices', {
+              currency: 'jpy',
               unit_amount: String(amount),
               product: product.id,
             }, `price-${slug}`);
 
-            const link = await stripePost("payment_links", {
-              "line_items[0][price]": price.id,
-              "line_items[0][quantity]": "1",
-              "after_completion[type]": "hosted_confirmation",
+            const link = await stripePost('payment_links', {
+              'line_items[0][price]': price.id,
+              'line_items[0][quantity]': '1',
+              'after_completion[type]': 'hosted_confirmation',
             }, `plink-${slug}`);
 
             return link.url;
           }
 
           (async () => {
-            const aga = await createPaymentLink(
-              "AGA完全ロードマップ（PDF）",
-              AGA_PRICE,
-              "すぐ読める完全ロードマップPDF"
-            );
+            try {
+              const aga = await createPaymentLink(
+                'AGA完全ロードマップ（PDF）',
+                AGA_PRICE,
+                'すぐ読める完全ロードマップPDF'
+              );
 
-            const consult = await createPaymentLink(
-              "AGA相談デポジット",
-              CONSULT_PRICE,
-              "優先枠の確保用デポジット（後日スケジュール調整）"
-            );
+              const consult = await createPaymentLink(
+                'AGA相談デポジット',
+                CONSULT_PRICE,
+                '優先枠の確保用デポジット（後日スケジュール調整）'
+              );
 
-            fs.writeFileSync(
-              "build/payment_links.json",
-              JSON.stringify(
-                {
-                  AGA_PDF: aga,
-                  CONSULT_DEPOSIT: consult,
-                },
-                null,
-                2
-              )
-            );
+              fs.writeFileSync(
+                'build/payment_links.json',
+                JSON.stringify(
+                  {
+                    AGA_PDF: aga,
+                    CONSULT_DEPOSIT: consult,
+                  },
+                  null,
+                  2
+                )
+              );
 
-            const utm = "?utm_source=x&utm_medium=organic&utm_campaign=aga_launch_d1";
+              const utm = '?utm_source=x&utm_medium=organic&utm_campaign=aga_launch_d1';
+              const legal = '<p>※ お問い合わせ内容は個人情報の取り扱いに基づき適切に管理します。</p>';
 
-            const head = `
-<!doctype html><html lang="ja"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AGA最短ロードマップ</title>
-<style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;padding:0;line-height:1.6;background:#fff;color:#111}
-.container{max-width:860px;margin:0 auto;padding:24px}
-.btn{display:inline-block;padding:12px 18px;border-radius:8px;text-decoration:none;border:1px solid #111}
-.btn-primary{background:#111;color:#fff}
-.btn-accent{background:#f5f5f5;color:#111}
-.hero{padding:28px 0}
-.card{background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px;margin:16px 0}
-footer{margin-top:48px;font-size:12px;color:#555}
-</style></head><body><div class="container">`;
+              fs.writeFileSync(
+                'public/index.html',
+                `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>AGA最短ロードマップ</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.6.1/dist/full.css"><script src="https://cdn.tailwindcss.com"></script></head><body><div class="container mx-auto px-4 py-8 space-y-4"><h1 class="text-3xl font-bold">AGA最短ロードマップ</h1><p>30分で読めるロードマップPDFです。</p><p><a class="btn btn-primary" href="${aga}${utm}" target="_blank">PDFを購入（¥${AGA_PRICE}）</a></p><p><a class="btn btn-accent" href="./consult.html">相談枠を確保する</a></p>${legal}</div></body></html>`
+              );
 
-            const legal = `
-<section class="card">
-<h3>特定商取引法に基づく表記</h3>
-<p>販売事業者：記載</p>
-<p>所在地：記載</p>
-<p>連絡先：記載（メール）※原則24時間以内に返信</p>
-<p>販売価格：各商品ページに税込表示</p>
-<p>支払方法：クレジットカード（Stripe）</p>
-<p>引き渡し時期：決済完了後すぐにダウンロード可能</p>
-<p>返品：デジタル商品の性質上、原則不可</p>
-</section>
-<footer>© 2025</footer>`;
+              fs.writeFileSync(
+                'public/consult.html',
+                `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>AGA相談枠</title><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@4.6.1/dist/full.css"><script src="https://cdn.tailwindcss.com"></script></head><body><div class="container mx-auto px-4 py-8 space-y-4"><h1 class="text-3xl font-bold">AGA相談枠（デポジット）</h1><p>優先相談枠の確保用デポジットです。</p><p><a class="btn btn-primary" href="${consult}${utm}" target="_blank">優先相談枠を確保（¥${CONSULT_PRICE}）</a></p><a class="btn btn-accent" href="./index.html">PDFに戻る</a></p>${legal}</div></body></html>`
+              );
 
-            const links = JSON.parse(fs.readFileSync("build/payment_links.json","utf8"));
-
-            fs.writeFileSync("public/index.html",
-`${head}
-<h1>AGAの最短ロードマップ（PDF）</h1>
-<p>初診から3ヶ月で結果を出すための行動プランを1冊に凝縮。</p>
-<p><a class="btn btn-primary" href="${links.AGA_PDF}${utm}" target="_blank">今すぐ購入（¥${AGA_PRICE}）</a>
-<a class="btn btn-accent" href="./consult.html">相談したい</a></p>
-${legal}
-</div></body></html>`
-            );
-
-            fs.writeFileSync("public/consult.html",
-`${head}
-<h1>優先相談デポジット</h1>
-<p>30分で状況整理と最短アクションを設計。</p>
-<p><a class="btn btn-primary" href="${links.CONSULT_DEPOSIT}${utm}" target="_blank">優先相談枠を確保（¥${CONSULT_PRICE}）</a>
-<a class="btn btn-accent" href="./index.html">PDFに戻る</a></p>
-${legal}
-</div></body></html>`
-            );
-
-            fs.writeFileSync("public/robots.txt", "User-agent: *\nAllow: /\n");
+              fs.writeFileSync('public/robots.txt', 'User-agent: *\nAllow: /\n');
+            } catch (error) {
+              console.error('Build error:', error?.message || error);
+              process.exit(1);
+            }
           })();
           JS
 
           cat > scripts/get_pages_url.js << 'JS'
-          const { execSync } = require("child_process");
-          const fs = require("fs");
+          const { execSync } = require('child_process');
+          const fs = require('fs');
           const project = process.env.CF_PROJECT;
 
           try {
-            const json = execSync("npx wrangler pages project list --json", { encoding:"utf8" });
+            const json = execSync('npx wrangler pages project list --json', { encoding: 'utf8' });
             const arr = JSON.parse(json);
-            const hit = arr.find(p => p.name === project);
+            const hit = arr.find((p) => p.name === project);
             if (hit && hit.production_domain) {
               console.log(`https://${hit.production_domain}`);
               process.exit(0);
             }
-          } catch(e){}
+          } catch (error) {
+            console.error('Failed to list Pages projects:', error?.message || error);
+          }
 
-          if (fs.existsSync("deploy.log")) {
-            const m = fs.readFileSync("deploy.log","utf8").match(/https?:\/\/[a-z0-9-]+\.pages\.dev/);
+          if (fs.existsSync('deploy.log')) {
+            const m = fs.readFileSync('deploy.log', 'utf8').match(/https?:\/\/[a-z0-9-]+\.pages\.dev/);
             if (m) {
               console.log(m[0]);
               process.exit(0);
@@ -245,12 +215,12 @@ ${legal}
 
             const tw1 = `【AGAで悩む人へ】最短ロードマップを公開。\n➡ ${links.AGA_PDF}${utm}`;
             const tw2 = `30分で読めるAGA最短ロードマップ。\n今すぐ読む➡ ${links.AGA_PDF}${utm}`;
-            const tw3 = `優先相談枠（¥3,000）本日開放。\n➡ ${links.CONSULT_DEPOSIT}${utm}`;
+            const tw3 = `優先相談枠（¥${parseInt(process.env.CONSULT_PRICE || '3000', 10)})本日開放。\n➡ ${links.CONSULT_DEPOSIT}${utm}`;
             const thread = [
-              "1/ AGAは情報の非対称性で損する。最短ルートを整理しました。",
-              "2/ PDFに初診〜3ヶ月の実務を整理（薬/病院/生活/費用）。",
+              '1/ AGAは情報の非対称性で損する。最短ルートを整理しました。',
+              '2/ PDFに初診〜3ヶ月の実務を整理（薬/病院/生活/費用）。',
               `3/ 今すぐ読む➡ ${links.AGA_PDF}${utm}`
-            ].join("\n");
+            ].join('\n');
 
             fs.writeFileSync("marketing/tweets.txt",[tw1,"",tw2,"",tw3,"",thread].join("\n"));
             fs.writeFileSync("marketing/note.md",
@@ -261,9 +231,9 @@ ${legal}
 - 3ヶ月アクションプラン
 - 落とし穴Q&A
 
-**PDF（¥1,480）** 👉 ${links.AGA_PDF}${utm}
+**PDF（¥${parseInt(process.env.AGA_PRICE || '1480', 10)}）** 👉 ${links.AGA_PDF}${utm}
 
-**優先相談デポジット（¥3,000）** 👉 ${links.CONSULT_DEPOSIT}${utm}
+**優先相談デポジット（¥${parseInt(process.env.CONSULT_PRICE || '3000', 10)}）** 👉 ${links.CONSULT_DEPOSIT}${utm}
 
 公開LP: ${site}
 `);
