@@ -1,2 +1,6 @@
-requestspyyamlpython-dotenvtenacitystripe
+requests
+pyyaml
+python-dotenv
+tenacity
+stripe
 notion-client
