@@ -249,7 +249,7 @@ def main():
     # 環境変数の確認
     required_envs = [
         "NOTION_TOKEN",
-        "NOTION_DATABASE_ID",
+        "NOTION_DB_ID",
         "RESEND_API_KEY",
         "RESEND_FROM_EMAIL",
         "RESEND_TO_EMAIL",
@@ -264,7 +264,7 @@ def main():
     
     # 環境変数を取得
     notion_token = os.getenv("NOTION_TOKEN")
-    database_id = os.getenv("NOTION_DATABASE_ID")
+    database_id = os.getenv("NOTION_DB_ID")
     resend_api_key = os.getenv("RESEND_API_KEY")
     from_email = os.getenv("RESEND_FROM_EMAIL")
     to_email = os.getenv("RESEND_TO_EMAIL")
