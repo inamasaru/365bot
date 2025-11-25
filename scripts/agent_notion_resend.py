@@ -11,39 +11,45 @@ import datetime as dt
 from typing import List, Dict, Any
 
 try:
-    from notion_client import Client
     import requests
 except ImportError as e:
     print(f"[ERROR] Missing required package: {e}")
-    print("[INFO] Please install: pip install notion-client requests")
+    print("[INFO] Please install: pip install requests")
     sys.exit(1)
 
 
-def fetch_notion_items(notion: Client, database_id: str, limit: int = 50):
+def fetch_notion_items(token: str, database_id: str, limit: int = 50):
     print("[INFO] Fetching pages from Notion database...")
 
+    url = f"https://api.notion.com/v1/databases/{database_id}/query"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json"
+    }
+    payload = {"page_size": limit}
+
     try:
-        results = notion.databases.query(
-            database_id=database_id,
-            page_size=limit
-        )
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
     except Exception as e:
         print(f"Error: Failed to fetch Notion pages: {e}")
         return []
 
-    pages = results.get("results", [])
+    pages = data.get("results", [])
     items = []
 
     for page in pages:
         props = page.get("properties", {})
-        title_prop = props.get("Name")
+        title_prop = props.get("Name", {})
         title = "(無題)"
 
-        if title_prop and isinstance(title_prop.get("title"), list):
+        if "title" in title_prop and isinstance(title_prop["title"], list):
             texts = [t.get("plain_text", "") for t in title_prop["title"]]
-            joined_title = "".join(texts).strip()
-            if joined_title:
-                title = joined_title
+            joined = "".join(texts).strip()
+            if joined:
+                title = joined
 
         url = page.get("url", "")
         items.append({"title": title, "url": url})
@@ -239,11 +245,8 @@ def main():
     to_email = os.getenv("RESEND_TO_EMAIL")
     
     try:
-        # Notion クライアントを初期化
-        notion = Client(auth=notion_token)
-        
-        # Notion からページ一覧を取得
-        items = fetch_notion_items(notion, database_id)
+        # Notion からページ一覧を取得（REST API 直叩き）
+        items = fetch_notion_items(notion_token, database_id, limit=50)
         
         if not items:
             print("[WARN] No items found in Notion database")
