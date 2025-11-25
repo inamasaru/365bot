@@ -32,4 +32,4 @@ jobs:
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
         run: |
-          python agent_notion_resend.py
+          python scripts/agent_notion_resend.py
