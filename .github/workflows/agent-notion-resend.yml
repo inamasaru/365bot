@@ -27,7 +27,7 @@ jobs:
       - name: Run agent-notion-resend
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
