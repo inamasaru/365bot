@@ -1,5 +1,2 @@
-requests
-pyyaml
-python-dotenv
-tenacity
-stripe
+requestspyyamlpython-dotenvtenacitystripe
+notion-client
