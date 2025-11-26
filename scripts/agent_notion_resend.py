@@ -1,38 +1,37 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-365bot agent-notion-resend
-Notion データベースからページ一覧を取得し、Resend API でメール送信する
-"""
-
 import os
-import sys
 import datetime as dt
-from typing import List, Dict, Any
+from typing import List
+import requests
 
-try:
-    import requests
-except ImportError as e:
-    print(f"[ERROR] Missing required package: {e}")
-    print("[INFO] Please install: pip install requests")
-    sys.exit(1)
+
+NOTION_API_VERSION = "2022-06-28"
+
+
+def _get_env(name: str, missing: List[str]) -> str:
+    value = os.getenv(name)
+    if not value:
+        missing.append(name)
+    return value or ""
 
 
 def fetch_notion_items(token: str, database_id: str, limit: int = 50):
+    """
+    Notion REST API を直接叩いてデータベースからページ一覧を取得する。
+    """
     print("[INFO] Fetching pages from Notion database...")
 
     url = f"https://api.notion.com/v1/databases/{database_id}/query"
     headers = {
         "Authorization": f"Bearer {token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json"
+        "Notion-Version": NOTION_API_VERSION,
+        "Content-Type": "application/json",
     }
     payload = {"page_size": limit}
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+        res = requests.post(url, headers=headers, json=payload, timeout=30)
+        res.raise_for_status()
+        data = res.json()
     except Exception as e:
         print(f"Error: Failed to fetch Notion pages: {e}")
         return []
@@ -45,244 +44,94 @@ def fetch_notion_items(token: str, database_id: str, limit: int = 50):
         title_prop = props.get("Name", {})
         title = "(無題)"
 
-        if "title" in title_prop and isinstance(title_prop["title"], list):
+        # タイトル抽出
+        if isinstance(title_prop, dict) and isinstance(title_prop.get("title"), list):
             texts = [t.get("plain_text", "") for t in title_prop["title"]]
             joined = "".join(texts).strip()
             if joined:
                 title = joined
 
-        url = page.get("url", "")
+        url = page.get("url") or ""
         items.append({"title": title, "url": url})
 
     return items
 
 
-def send_email_via_resend(
-    api_key: str,
-    from_email: str,
-    to_email: str,
-    subject: str,
-    html_content: str
-) -> bool:
-    """
-    Resend API を使ってメールを送信
-    
-    Args:
-        api_key: Resend API キー
-        from_email: 送信元メールアドレス
-        to_email: 送信先メールアドレス
-        subject: メール件名
-        html_content: メール本文（HTML）
-        
-    Returns:
-        送信成功の場合 True、失敗の場合 False
-    """
-    print("[INFO] Sending email via Resend API...")
-    
-    url = "https://api.resend.com/emails"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "from": from_email,
-        "to": [to_email],
-        "subject": subject,
-        "html": html_content
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            result = response.json()
-            email_id = result.get("id", "unknown")
-            print(f"[INFO] Email sent successfully! ID: {email_id}")
-            return True
-        else:
-            print(f"[ERROR] Failed to send email: {response.status_code}")
-            print(f"[ERROR] Response: {response.text}")
-            return False
-            
-    except Exception as e:
-        print(f"[ERROR] Exception while sending email: {e}")
-        return False
-
-
-def generate_email_html(items: List[Dict[str, Any]]) -> str:
-    """
-    Notion ページ一覧から HTML メールを生成
-    
-    Args:
-        items: Notion ページ情報のリスト
-        
-    Returns:
-        HTML メール本文
-    """
-    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }}
-        h1 {{
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-        }}
-        .page-list {{
-            list-style: none;
-            padding: 0;
-        }}
-        .page-item {{
-            background: #f8f9fa;
-            margin: 10px 0;
-            padding: 15px;
-            border-left: 4px solid #3498db;
-            border-radius: 4px;
-        }}
-        .page-title {{
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }}
-        .page-title a {{
-            color: #2c3e50;
-            text-decoration: none;
-        }}
-        .page-title a:hover {{
-            color: #3498db;
-            text-decoration: underline;
-        }}
-        .footer {{
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #ecf0f1;
-            font-size: 14px;
-            color: #7f8c8d;
-            text-align: center;
-        }}
-    </style>
-</head>
-<body>
-    <h1>📋 Notion Database Digest</h1>
-    <p>Generated at: {now}</p>
-    <p>Total pages: {len(items)}</p>
-    
-    <ul class="page-list">
-"""
-    
+def build_email_body(items):
     if not items:
-        html += """
-        <li class="page-item">
-            <div class="page-title">No pages found</div>
-        </li>
-"""
-    else:
-        for item in items:
-            title = item.get("title", "(無題)")
-            url = item.get("url", "#")
-            
-            html += f"""
-        <li class="page-item">
-            <div class="page-title">
-                <a href="{url}" target="_blank">{title}</a>
-            </div>
-        </li>
-"""
-    
-    html += """
-    </ul>
-    
-    <div class="footer">
-        <p>This email was automatically generated by 365bot agent-notion-resend</p>
-    </div>
-</body>
-</html>
-"""
-    
-    return html
+        return "対象のNotionデータベースにレコードがありませんでした。"
+
+    lines = []
+    for i, item in enumerate(items, start=1):
+        title = item.get("title", "(無題)")
+        url = item.get("url") or ""
+        if url:
+            lines.append(f"{i}. {title}\n   {url}")
+        else:
+            lines.append(f"{i}. {title}")
+    return "\n".join(lines)
+
+
+def send_email(api_key: str, from_email: str, to_email: str, subject: str, body: str):
+    """
+    Resend の REST API を使ってメール送信
+    """
+    print("[INFO] Sending email via Resend...")
+    res = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": from_email,
+            "to": [to_email],
+            "subject": subject,
+            "text": body,
+        },
+        timeout=30,
+    )
+    res.raise_for_status()
+    print(f"[INFO] Resend response: {res.status_code} {res.text}")
 
 
 def main():
-    """メイン処理"""
     print("=== 365bot agent-notion-resend START ===")
-    now = dt.datetime.now().isoformat()
-    print(f"[INFO] Now: {now}")
-    
-    # 環境変数の確認
-    required_envs = [
-        "NOTION_TOKEN",
-        "NOTION_DB_ID",
-        "RESEND_API_KEY",
-        "RESEND_FROM_EMAIL",
-        "RESEND_TO_EMAIL",
-    ]
-    
-    missing = [name for name in required_envs if not os.getenv(name)]
+    now = dt.datetime.now()
+    print(f"[INFO] Now: {now.isoformat()}")
+
+    missing: List[str] = []
+    notion_token = _get_env("NOTION_TOKEN", missing)
+    notion_db_id = _get_env("NOTION_DB_ID", missing)
+    resend_api_key = _get_env("RESEND_API_KEY", missing)
+    from_email = _get_env("RESEND_FROM_EMAIL", missing)
+    to_email = _get_env("RESEND_TO_EMAIL", missing)
+
     if missing:
         print(f"[WARN] Missing envs: {', '.join(missing)}")
-        print("[INFO] 環境変数が欠けているためメール送信をスキップします")
+        print("[INFO] 環境変数が揃えばメール送信ロジックを実行します。")
         print("=== 365bot agent-notion-resend END (SKIPPED) ===")
         return
-    
-    # 環境変数を取得
-    notion_token = os.getenv("NOTION_TOKEN")
-    database_id = os.getenv("NOTION_DB_ID")
-    resend_api_key = os.getenv("RESEND_API_KEY")
-    from_email = os.getenv("RESEND_FROM_EMAIL")
-    to_email = os.getenv("RESEND_TO_EMAIL")
-    
+
     try:
-        # Notion からページ一覧を取得（REST API 直叩き）
-        items = fetch_notion_items(notion_token, database_id, limit=50)
-        
+        items = fetch_notion_items(notion_token, notion_db_id, limit=50)
+
         if not items:
             print("[WARN] No items found in Notion database")
             print("=== 365bot agent-notion-resend END (NO ITEMS) ===")
             return
-        
-        print(f"[INFO] Found {len(items)} items in Notion database")
-        
-        # HTML メールを生成
-        html_content = generate_email_html(items)
-        
-        # メールを送信
-        subject = f"📋 Notion Database Digest - {dt.datetime.now().strftime('%Y-%m-%d')}"
-        success = send_email_via_resend(
-            api_key=resend_api_key,
-            from_email=from_email,
-            to_email=to_email,
-            subject=subject,
-            html_content=html_content
-        )
-        
-        if success:
-            print("=== 365bot agent-notion-resend END (SUCCESS) ===")
-        else:
-            print("=== 365bot agent-notion-resend END (EMAIL FAILED) ===")
-            
+
+        body = build_email_body(items)
+        subject = f"365bot Notionダイジェスト {now.strftime('%Y-%m-%d')}"
+
+        send_email(resend_api_key, from_email, to_email, subject, body)
+        print("[INFO] メール送信が完了しました。")
+        print("=== 365bot agent-notion-resend END (SUCCESS) ===")
+
     except Exception as e:
-        print(f"Error: [ERROR] Unexpected error: {e}")
+        print(f"[ERROR] Unexpected error: {e}")
         print("=== 365bot agent-notion-resend END (ERROR BUT NOT FAILED) ===")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"[ERROR] Fatal error: {e}")
-        print("=== 365bot agent-notion-resend END (FATAL ERROR) ===")
-        # GitHub Actions では失敗扱いにしない（exit code 0）
-        sys.exit(0)
+    main()
