@@ -1,0 +1,31 @@
+name: daily-sns-affiliate-post
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run daily SNS affiliate post
+        env:
+          AFFILIATE_API_BASE_URL: ${{ secrets.AFFILIATE_API_BASE_URL }}
+          AFFILIATE_API_KEY: ${{ secrets.AFFILIATE_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TO_USER_ID: ${{ secrets.LINE_TO_USER_ID }}
+          TIMEZONE: ${{ secrets.TIMEZONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          NOTION_CAMPAIGN_DATA_SOURCE_ID: ${{ secrets.NOTION_CAMPAIGN_DATA_SOURCE_ID }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+        run: python -m auto_rev.jobs.daily_sns_affiliate_post
