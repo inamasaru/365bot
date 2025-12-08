@@ -1,57 +1,44 @@
-# 365bot
+# Auto Revenue Framework
 
-このリポジトリは自動収益システム「365億Bot」のコードと設定を含みます。自動化プラットフォームとしてGitHub Actionsで実行され、LINE・Notion・（任意）Stripeと連携します。
+外部売上 API から取得したデータを Notion の data source に記録し、集計結果を LINE で通知するフレームワークです。GitHub Actions のスケジュール実行により毎日自動で処理されます。
 
-## セットアップ手項
+## アーキテクチャ概要
+1. スキル層: 外部 API から売上を取得 (`HttpJsonSalesSourceClient`)、Notion へ売上行を追加 (`NotionLogger`)、LINE でサマリを通知 (`LineNotifier`)。
+2. ジョブ層: `auto_rev.jobs.daily_affiliate_report` が前日の売上を取得し、Notion への登録と LINE 通知をまとめて実行します。
+3. オーケストレーション: GitHub Actions が毎日 UTC 0:00（日本時間 9:00）にジョブを起動します。`workflow_dispatch` による手動実行も可能です。
 
-1. リポジトリをクローンするか、GitHub上で作成されたこのリポジトリにアクセスします。
-2. GitHubのリポジトリ「Settings > Secrets and variables > Actions」で以下のリポジトリシークレットを登録します。値はシークレットとして保存され、コードに含めません。
-   - `LINE_BOT_TOKEN` – LINE Messaging APIのチャネルアクセストークン。
-   - `NOTION_TOKEN` – Notionの内部インテグレーショントークン。
-   - `NOTION_DB_ID` – リード管理用NotionデータベースID。
-   - `STRIPE_SECRET_KEY` – (任意) Stripeのシークレットキー。
-3. 必要に応じて `.env.sample` をコピーして `.env` を作成し、ローカル実行用の値を記入します。
-4. 依存パッケージをインストールします：
-   ```bash
-   pip install -r requirements.txt
-   ```
-5. `config.yaml` にジャンル情報（商品名、価格、通知先LINEユーザーIDなど）を設定します。複数ジャンルを追加する場合は `genre:` 配列に追記してください。
+## Notion の準備
+1. Notion Integration を作成し、シークレットを取得して `NOTION_API_KEY` として保存します。
+2. 対象の data source を作成し、以下のプロパティを用意します。
+   - Name: タイトル型
+   - Amount: 数値型
+   - Commission: 数値型
+   - Occurred: 日付型
+3. data_source_id は対象 data source ページを開き、URL 末尾から ID をコピーします。
+4. Integration に対して data source への編集権限を共有します。
 
-## Notionデータベース
+## LINE の準備
+1. LINE Official Account / Messaging API チャネルを作成します。
+2. チャネルアクセストークンを取得し、`LINE_CHANNEL_ACCESS_TOKEN` として保存します。
+3. 友だち追加した自分のユーザー ID など通知先となる ID を `LINE_TO_USER_ID` に設定します。
 
-Notionで空のデータベースを作成し、以下のプロパティを追加します。作成後のURL先頭32文字を `NOTION_DB_ID` として設定してください。
+## 環境変数と GitHub Secrets
+ローカル実行や GitHub Actions で使用する環境変数は以下です。
 
-- **Name** (タイトル) – リード名または外部ID
-- **External_ID** (リッチテキスト) – 重複防止キーとなる外部ID
-- **Email** (Email) – メールアドレス
-- **Phone** (Phone) – 電話番号
-- **Product** (リッチテキスト) – 商品名
-- **Price** (Number) – 価格（円）
-- **CVR** (Number) – 想定CVR
-- **Status** (Select) – New, Contacted, Interested, Purchased, Closed
-- **Payment_Status** (Select) – Pending, Completed, Failed
-- **Payment_Date** (Date) – 決済日時
-- **Notes** (リッチテキスト) – メモ
+- `AFFILIATE_API_BASE_URL`
+- `AFFILIATE_API_KEY`
+- `NOTION_API_KEY`
+- `NOTION_DATA_SOURCE_ID`
+- `LINE_CHANNEL_ACCESS_TOKEN`
+- `LINE_TO_USER_ID`
+- `TIMEZONE` (省略時は `Asia/Tokyo`)
 
-## GitHub Actions ワークフロー
-
-`.github/workflows/bot.yml` では、10分毎および `workflow_dispatch` で `main.py` を実行します。ワークフローはリード情報の集計・通知や新規リード登録を行います。手動で実行するには、GitHubの `Actions` タブで `Run workflow` をクリックしてください。
+GitHub Actions では上記をリポジトリの Secrets として設定してください。
 
 ## ローカル実行
-
-環境変数を設定した `.env` を用意した上で、次のコマンドでスクリプトを実行できます：
-
 ```bash
-python main.py
+python -m auto_rev.jobs.daily_affiliate_report
 ```
 
-フォームからのリード登録をテストする場合、環境変数 `FORM_EXTERNAL_ID` などを設定して実行します。
-
-## トラブルシューティング
-
-- NotionやLINE API呼び出しでエラーが発生する場合は、環境変数が正しく設定されているかを確認し、GitHub Actionsのログを参照してください。
-- `STRIPE_SECRET_KEY` を設定していない場合は決済リンク生成がスキップされます。
-
----
-
-このREADMEは基本的なセットアップと拡張方法を誠明します。詳細は `main.py` と `config.yaml` を参照してください。
+## GitHub Actions の実行タイミング
+ワークフローは UTC 0:00 に1日1回実行されます。これは日本時間で 09:00 に相当します。
