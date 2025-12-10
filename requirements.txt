@@ -1,6 +1,4 @@
 requests>=2.31.0,<3.0.0
-pyyaml
-python-dotenv
-tenacity
-stripe
-notion-client
+slack_sdk>=3.27.0,<4.0.0
+notion-client>=2.2.1,<3.0.0
+python-dateutil>=2.9.0
