@@ -1,277 +1,322 @@
 #!/usr/bin/env python3
 """
-A8.net成果データの取得・通知・保存を行うスクリプト。
+Keepa API を利用した完全自動の利益検知 Bot。
+Render の Cron Job/Worker でそのまま動くように設計している。
 
-環境変数（GitHub Secrets を想定）
-- A8_LOGIN_EMAIL / A8_LOGIN_PASSWORD
-- SLACK_BOT_TOKEN or SLACK_WEBHOOK_URL
-- SLACK_CHANNEL
-- NOTION_API_TOKEN / NOTION_DATABASE_ID
-- PROXY_URL (optional)
-- A8_LOGIN_URL / A8_REPORT_URL (optional override)
+機能概要:
+- 指定 ASIN の現在価格を Keepa API から取得
+- 仕入れ原価・手数料を考慮して利益/利益率を計算
+- 条件を満たす商品を Slack Webhook へ通知（他 Webhook も差し替え容易）
+- HTTP エラー時は自動リトライ＆レートリミット付き
+- ログは stdout へ出力（Render ダッシュボードで確認可能）
 """
+
 from __future__ import annotations
 
-import csv
-import io
 import json
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
-from dateutil import parser as date_parser
-from notion_client import Client as NotionClient
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
-from slack_sdk.webhook import WebhookClient
+from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
-LOGIN_URL_DEFAULT = "https://secure.a8.net/accounts/login/"
-REPORT_URL_DEFAULT = "https://www.a8.net/a8v2/pcv2/support/download/report"
+# ローカル実行時は .env を読み込む（Render では不要だが安全）
+load_dotenv()
 
 
 @dataclass
-class Achievement:
-    order_id: str
-    program: str
-    amount: float
-    result_date: datetime
-    status: str
-    raw: Dict[str, str]
+class ProductConfig:
+    asin: str
+    cost_price: float
+    min_profit: float
+    min_margin: float
+    min_sale_price: Optional[float]
+    title: Optional[str]
 
 
-class SlackNotifier:
-    def __init__(self, token: Optional[str], channel: Optional[str], webhook_url: Optional[str]) -> None:
-        self.token = token
-        self.channel = channel
-        self.webhook_url = webhook_url
-        self.client = WebClient(token=token) if token else None
-        self.webhook_client = WebhookClient(webhook_url) if webhook_url else None
-
-    def notify(self, achievements: Iterable[Achievement]) -> None:
-        items = list(achievements)
-        if not items:
-            logging.info("Slack notification skipped: no new achievements")
-            return
-
-        lines = ["新しいA8成果を検出しました："]
-        for a in items:
-            lines.append(
-                f"・{a.result_date.strftime('%Y-%m-%d %H:%M')}: {a.program} / {a.status} / {a.amount:,.0f}円 / ID={a.order_id}"
-            )
-        message = "\n".join(lines)
-
-        if self.client and self.channel:
-            try:
-                self.client.chat_postMessage(channel=self.channel, text=message)
-                logging.info("Slack (bot token) へ通知しました")
-                return
-            except SlackApiError as exc:
-                logging.error("Slack API error via bot token: %s", exc)
-
-        if self.webhook_client:
-            try:
-                resp = self.webhook_client.send(text=message)
-                logging.info("Slack (webhook) へ通知しました: %s", resp.status_code)
-            except Exception as exc:  # noqa: BLE001
-                logging.error("Slack webhook error: %s", exc)
-        else:
-            logging.warning("Slack通知が無効です。SLACK_BOT_TOKEN もしくは SLACK_WEBHOOK_URL を設定してください。")
+@dataclass
+class ProfitResult:
+    asin: str
+    current_price: float
+    profit: float
+    margin: float
+    config: ProductConfig
+    product_title: str
 
 
-class NotionRepository:
-    def __init__(self, api_token: str, database_id: str) -> None:
-        self.client = NotionClient(auth=api_token)
-        self.database_id = database_id
+class KeepaClient:
+    """薄い Keepa API クライアント。requests + Retry で安定動作させる。"""
 
-    def has_order(self, order_id: str) -> bool:
-        response = self.client.databases.query(
-            database_id=self.database_id,
-            filter={"property": "Order ID", "title": {"equals": order_id}},
-            page_size=1,
+    def __init__(
+        self,
+        api_key: str,
+        domain: int,
+        timeout: float,
+        retries: int,
+        backoff_seconds: float,
+        rate_limit_interval: float,
+    ) -> None:
+        self.api_key = api_key
+        self.domain = domain
+        self.timeout = timeout
+        self.rate_limit_interval = rate_limit_interval
+
+        retry_strategy = Retry(
+            total=retries,
+            backoff_factor=backoff_seconds,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "POST"],
         )
-        exists = bool(response.get("results"))
-        logging.debug("Notion check for order %s -> %s", order_id, exists)
-        return exists
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session = requests.Session()
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
-    def save(self, achievement: Achievement) -> None:
-        self.client.pages.create(
-            parent={"database_id": self.database_id},
-            properties={
-                "Order ID": {"title": [{"text": {"content": achievement.order_id}}]},
-                "Program": {"rich_text": [{"text": {"content": achievement.program or "-"}}]},
-                "Amount": {"number": achievement.amount},
-                "Result Date": {"date": {"start": achievement.result_date.isoformat()}},
-                "Status": {"rich_text": [{"text": {"content": achievement.status}}]},
-                "Raw": {"rich_text": [{"text": {"content": json.dumps(achievement.raw, ensure_ascii=False)}}]},
-            },
-        )
-        logging.info("Notion へ成果(ID=%s)を保存しました", achievement.order_id)
-
-
-def load_env() -> Dict[str, str]:
-    required = [
-        "A8_LOGIN_EMAIL",
-        "A8_LOGIN_PASSWORD",
-        "NOTION_API_TOKEN",
-        "NOTION_DATABASE_ID",
-    ]
-    config = {key: os.getenv(key, "") for key in required}
-    missing = [k for k, v in config.items() if not v]
-    if missing:
-        raise RuntimeError(f"必須の環境変数が不足しています: {', '.join(missing)}")
-
-    config.update(
-        {
-            "SLACK_BOT_TOKEN": os.getenv("SLACK_BOT_TOKEN", ""),
-            "SLACK_CHANNEL": os.getenv("SLACK_CHANNEL", ""),
-            "SLACK_WEBHOOK_URL": os.getenv("SLACK_WEBHOOK_URL", ""),
-            "PROXY_URL": os.getenv("PROXY_URL", ""),
-            "A8_LOGIN_URL": os.getenv("A8_LOGIN_URL", LOGIN_URL_DEFAULT),
-            "A8_REPORT_URL": os.getenv("A8_REPORT_URL", REPORT_URL_DEFAULT),
+    def fetch_product(self, asin: str) -> Dict[str, Any]:
+        url = "https://api.keepa.com/product"
+        params = {
+            "key": self.api_key,
+            "domain": self.domain,
+            "asin": asin,
+            "buybox": 1,
+            "stats": 1,
         }
-    )
-    return config
+        logging.info("Keepa から商品情報を取得: ASIN=%s", asin)
+        response = self.session.get(url, params=params, timeout=self.timeout)
+        response.raise_for_status()
+        payload = response.json()
+
+        if payload.get("error"):
+            raise RuntimeError(f"Keepa API error: {payload['error']}")
+
+        products = payload.get("products") or []
+        if not products:
+            raise RuntimeError(f"Keepa API returned no product for ASIN {asin}")
+
+        time.sleep(self.rate_limit_interval)  # 無料プラン配慮のレートリミット
+        return products[0]
 
 
-def build_session(proxy_url: str) -> requests.Session:
-    session = requests.Session()
-    session.headers.update({"User-Agent": "a8-automation-bot/1.0"})
-    if proxy_url:
-        session.proxies.update({"http": proxy_url, "https": proxy_url})
-        logging.info("プロキシを使用します: %s", proxy_url)
-    return session
+def parse_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def login_and_download_csv(session: requests.Session, login_url: str, report_url: str, email: str, password: str) -> bytes:
-    logging.info("A8.net へログインします")
-    login_payload = {"login": email, "password": password}
-    resp = session.post(login_url, data=login_payload)
-    resp.raise_for_status()
+def parse_product_catalog(raw: str) -> List[ProductConfig]:
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("PRODUCT_CATALOG は JSON 配列で指定してください") from exc
 
-    logging.info("成果CSVをダウンロードします")
-    csv_resp = session.get(report_url)
-    csv_resp.raise_for_status()
-    return csv_resp.content
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("PRODUCT_CATALOG は1件以上の JSON オブジェクトを含む配列で指定してください")
 
-
-def parse_csv(content: bytes) -> List[Dict[str, str]]:
-    for encoding in ("cp932", "utf-8", "utf-8-sig"):
+    configs: List[ProductConfig] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("PRODUCT_CATALOG の各要素はオブジェクトにしてください")
         try:
-            text = content.decode(encoding)
+            asin = str(entry["asin"]).strip()
+            cost_price = float(entry["cost_price"])
+        except KeyError as exc:
+            raise ValueError("asin と cost_price は必須です") from exc
+
+        configs.append(
+            ProductConfig(
+                asin=asin,
+                cost_price=cost_price,
+                min_profit=float(entry.get("min_profit", 0.0)),
+                min_margin=float(entry.get("min_margin", 0.0)),
+                min_sale_price=float(entry["min_sale_price"]) if "min_sale_price" in entry else None,
+                title=entry.get("title"),
+            )
+        )
+    return configs
+
+
+def pick_latest_price(raw_history: Optional[List[int]]) -> Optional[int]:
+    if not raw_history:
+        return None
+    for value in reversed(raw_history):
+        if isinstance(value, int) and value > 0:
+            return value
+    return None
+
+
+def extract_current_price(product: Dict[str, Any]) -> Optional[float]:
+    stats = product.get("stats", {}) or {}
+    current = stats.get("current", {}) or {}
+    raw_price: Optional[int] = None
+
+    for key in ("buyBox", "new", "used"):
+        candidate = current.get(key)
+        if isinstance(candidate, int) and candidate > 0:
+            raw_price = candidate
             break
-        except UnicodeDecodeError:
-            continue
-    else:
-        raise UnicodeDecodeError("utf-8", b"", 0, 1, "Failed to decode CSV")
 
-    reader = csv.DictReader(io.StringIO(text))
-    rows: List[Dict[str, str]] = []
-    for row in reader:
-        normalized_row = {k.strip(): v.strip() for k, v in row.items() if k is not None}
-        rows.append(normalized_row)
-    logging.info("CSV 行数: %d", len(rows))
-    return rows
+    if raw_price is None:
+        raw_price = pick_latest_price(product.get("buyBoxPriceHistory"))
+
+    if raw_price is None or raw_price <= 0:
+        return None
+    return raw_price / 100
 
 
-def pick_value(row: Dict[str, str], keys: List[str], default: str = "") -> str:
-    for key in keys:
-        if key in row and row[key]:
-            return row[key]
-    return default
+def calculate_profit(current_price: float, cost_price: float, fee_rate: float, fba_fee: float) -> tuple[float, float]:
+    revenue_after_fee = current_price * (1 - fee_rate) - fba_fee
+    profit = revenue_after_fee - cost_price
+    margin = profit / current_price if current_price > 0 else 0.0
+    return profit, margin
 
 
-def parse_amount(value: str) -> float:
-    cleaned = value.replace(",", "").replace("円", "").strip()
-    try:
-        return float(cleaned)
-    except ValueError:
-        return 0.0
+def evaluate_product(
+    product: Dict[str, Any],
+    config: ProductConfig,
+    fee_rate: float,
+    fba_fee: float,
+) -> Optional[ProfitResult]:
+    price = extract_current_price(product)
+    if price is None:
+        logging.warning("現在価格を取得できませんでした: ASIN=%s", config.asin)
+        return None
 
+    profit, margin = calculate_profit(price, config.cost_price, fee_rate, fba_fee)
 
-def parse_date(value: str) -> datetime:
-    try:
-        return date_parser.parse(value)
-    except (ValueError, TypeError):
-        return datetime.now()
+    if config.min_sale_price is not None and price < config.min_sale_price:
+        logging.info("希望売価に未達: ASIN=%s price=%.2f", config.asin, price)
+        return None
+    if profit < config.min_profit or margin < config.min_margin:
+        logging.info(
+            "利益条件未達: ASIN=%s profit=%.2f margin=%.2f",
+            config.asin,
+            profit,
+            margin,
+        )
+        return None
 
-
-def normalize(row: Dict[str, str]) -> Achievement:
-    order_id = pick_value(row, ["注文ID", "注文番号", "オーダーID", "成果ID", "order_id", "id"])
-    if not order_id:
-        order_id = f"auto-{abs(hash(json.dumps(row, ensure_ascii=False)))}"
-
-    program = pick_value(row, ["プログラム名", "広告主", "program", "案件"], "(不明なプログラム)")
-    amount_str = pick_value(row, ["成果報酬(税抜)", "成果報酬額", "成果報酬", "報酬", "金額", "amount"], "0")
-    status = pick_value(row, ["状態", "ステータス", "status"], "不明")
-    date_value = pick_value(row, ["成果発生日時", "発生日", "日時", "date", "created"], datetime.now().isoformat())
-
-    return Achievement(
-        order_id=order_id,
-        program=program,
-        amount=parse_amount(amount_str),
-        result_date=parse_date(date_value),
-        status=status,
-        raw=row,
+    title = config.title or product.get("title") or "(title not provided)"
+    return ProfitResult(
+        asin=config.asin,
+        current_price=price,
+        profit=profit,
+        margin=margin,
+        config=config,
+        product_title=title,
     )
 
 
-def filter_new_achievements(rows: List[Dict[str, str]], notion_repo: NotionRepository) -> List[Achievement]:
-    achievements: List[Achievement] = []
-    for row in rows:
-        achievement = normalize(row)
-        if notion_repo.has_order(achievement.order_id):
-            logging.debug("既存の成果をスキップ: %s", achievement.order_id)
-            continue
-        achievements.append(achievement)
-    return achievements
+def build_webhook_payload(results: List[ProfitResult]) -> Dict[str, Any]:
+    lines = ["Keepa 利益検知結果"]
+    for item in results:
+        lines.append(
+            "\n".join(
+                [
+                    f"ASIN: {item.asin} ({item.product_title})",
+                    f"現行価格: ¥{item.current_price:,.0f}",
+                    f"想定利益: ¥{item.profit:,.0f}",
+                    f"利益率: {item.margin*100:.1f}%",
+                    f"原価: ¥{item.config.cost_price:,.0f}",
+                ]
+            )
+        )
+    return {"text": "\n\n".join(lines)}
 
 
-def process() -> None:
-    config = load_env()
-    logging.info("環境変数を読み込みました")
+def send_notification(webhook_url: str, payload: Dict[str, Any], timeout: float, retries: int) -> None:
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.post(webhook_url, json=payload, timeout=timeout)
+            resp.raise_for_status()
+            logging.info("Webhook 通知に成功しました (attempt %d)", attempt)
+            return
+        except Exception as exc:  # noqa: BLE001
+            logging.error("Webhook 通知に失敗しました (attempt %d/%d): %s", attempt, retries, exc)
+            if attempt == retries:
+                raise
+            time.sleep(2**attempt)
 
-    session = build_session(config.get("PROXY_URL", ""))
-    csv_content = login_and_download_csv(
-        session,
-        login_url=config["A8_LOGIN_URL"],
-        report_url=config["A8_REPORT_URL"],
-        email=config["A8_LOGIN_EMAIL"],
-        password=config["A8_LOGIN_PASSWORD"],
-    )
 
-    rows = parse_csv(csv_content)
-    notion_repo = NotionRepository(config["NOTION_API_TOKEN"], config["NOTION_DATABASE_ID"])
-    new_achievements = filter_new_achievements(rows, notion_repo)
+def load_settings() -> Dict[str, Any]:
+    required = ["KEEPA_API_KEY", "PRODUCT_CATALOG", "NOTIFY_WEBHOOK_URL"]
+    missing = [key for key in required if not os.getenv(key)]
+    if missing:
+        raise EnvironmentError(f"必須の環境変数が未設定です: {', '.join(missing)}")
 
-    if not new_achievements:
-        logging.info("新しい成果はありません")
-        return
-
-    notifier = SlackNotifier(
-        token=config.get("SLACK_BOT_TOKEN"),
-        channel=config.get("SLACK_CHANNEL"),
-        webhook_url=config.get("SLACK_WEBHOOK_URL"),
-    )
-    notifier.notify(new_achievements)
-
-    for achievement in new_achievements:
-        notion_repo.save(achievement)
-
-    logging.info("処理が完了しました。新規成果数: %d", len(new_achievements))
+    return {
+        "keepa_api_key": os.environ["KEEPA_API_KEY"],
+        "keepa_domain": int(os.getenv("KEEPA_DOMAIN", "5")),
+        "product_catalog": parse_product_catalog(os.environ["PRODUCT_CATALOG"]),
+        "fee_rate": float(os.getenv("PROFIT_FEE_RATE", "0.15")),
+        "fba_fee": float(os.getenv("PROFIT_FBA_FEE", "440")),
+        "request_timeout": float(os.getenv("REQUEST_TIMEOUT", "15")),
+        "http_retries": int(os.getenv("RETRY_COUNT", "3")),
+        "retry_backoff_seconds": float(os.getenv("RETRY_BACKOFF_SECONDS", "1")),
+        "rate_limit_interval": float(os.getenv("RATE_LIMIT_INTERVAL", "1.0")),
+        "webhook_url": os.environ["NOTIFY_WEBHOOK_URL"],
+        "webhook_retries": int(os.getenv("WEBHOOK_RETRIES", "3")),
+        "dry_run": parse_bool(os.getenv("DRY_RUN", "false")),
+        "log_level": os.getenv("LOG_LEVEL", "INFO"),
+    }
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
-    try:
-        process()
-    except Exception as exc:  # noqa: BLE001
-        logging.exception("処理中にエラーが発生しました: %s", exc)
-        sys.exit(1)
+    settings = load_settings()
+    logging.basicConfig(
+        level=getattr(logging, settings["log_level"].upper(), logging.INFO),
+        format="[%(asctime)s] %(levelname)s: %(message)s",
+    )
+
+    client = KeepaClient(
+        api_key=settings["keepa_api_key"],
+        domain=settings["keepa_domain"],
+        timeout=settings["request_timeout"],
+        retries=settings["http_retries"],
+        backoff_seconds=settings["retry_backoff_seconds"],
+        rate_limit_interval=settings["rate_limit_interval"],
+    )
+
+    profitable: List[ProfitResult] = []
+    for config in settings["product_catalog"]:
+        try:
+            product = client.fetch_product(config.asin)
+            result = evaluate_product(
+                product=product,
+                config=config,
+                fee_rate=settings["fee_rate"],
+                fba_fee=settings["fba_fee"],
+            )
+            if result:
+                profitable.append(result)
+        except Exception as exc:  # noqa: BLE001
+            logging.exception("商品処理中にエラーが発生しました: ASIN=%s error=%s", config.asin, exc)
+
+    if not profitable:
+        logging.info("通知対象の商品はありませんでした")
+        return
+
+    payload = build_webhook_payload(profitable)
+    if settings["dry_run"]:
+        logging.info("DRY_RUN 有効のため通知をスキップします: %s", payload)
+        return
+
+    send_notification(
+        webhook_url=settings["webhook_url"],
+        payload=payload,
+        timeout=settings["request_timeout"],
+        retries=settings["webhook_retries"],
+    )
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("致命的なエラー: %s", exc)
+        sys.exit(1)
