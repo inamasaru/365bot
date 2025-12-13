@@ -15,7 +15,13 @@ jobs:
       LINE_BOT_TOKEN: ${{ secrets.LINE_BOT_TOKEN }}
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
       NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}      A8_LOGIN_EMAIL: ${{ secrets.A8_LOGIN_EMAIL }}
+      A8_LOGIN_PASSWORD: ${{ secrets.A8_LOGIN_PASSWORD }}
+      NOTION_API_TOKEN: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
