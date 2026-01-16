@@ -11,22 +11,43 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    concurrency:
+      group: 365bot-${{ github.ref }}
+      cancel-in-progress: true
     env:
-      LINE_BOT_TOKEN: ${{ secrets.LINE_BOT_TOKEN }}
-      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-      NOTION_DB_ID: ${{ secrets.NOTION_DB_ID }}
-      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      KEEPA_API_KEY: ${{ secrets.KEEPA_API_KEY }}
+      PRODUCT_CATALOG: ${{ secrets.PRODUCT_CATALOG }}
+      NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Validate required env
+        run: |
+          set -euo pipefail
+          missing=()
+          for key in KEEPA_API_KEY PRODUCT_CATALOG NOTIFY_WEBHOOK_URL; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("$key")
+            fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "❌ Missing required secrets: ${missing[*]}"
+            exit 2
+          fi
       - name: Install dependencies
         run: |
+          set -euxo pipefail
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Compile Python sources
+        run: |
+          set -euxo pipefail
+          python -m compileall -q .
       - name: Run bot script
         run: |
+          set -euxo pipefail
           python main.py
