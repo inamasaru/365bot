@@ -1,0 +1,92 @@
+name: daily-pipeline
+
+on:
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  pages: write
+  id-token: write
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: python scripts/pipeline.py --mode run
+
+      - name: Read decision
+        id: decision
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          decision_path = Path('reports/decision.json')
+          decision = json.loads(decision_path.read_text(encoding='utf-8'))
+          go_value = 'true' if decision.get('go') else 'false'
+          with open('$GITHUB_OUTPUT', 'a', encoding='utf-8') as handle:
+              handle.write(f"go={go_value}\n")
+          PY
+
+      - name: Auto improve copy
+        if: steps.decision.outputs.go == 'true'
+        run: python scripts/auto_improve.py
+
+      - name: Create Pull Request
+        if: steps.decision.outputs.go == 'true'
+        id: cpr
+        uses: actions/create-pull-request@v6
+        with:
+          branch: "auto/improve-${{ github.run_id }}"
+          title: "chore: auto improve landing copy"
+          body: "Automated copy improvement based on KPI decision."
+          commit-message: "chore: auto improve landing copy"
+
+      - name: Run smoke test
+        if: steps.decision.outputs.go == 'true' && steps.cpr.outputs.pull-request-number
+        run: python scripts/smoke_test.py
+
+      - name: Merge Pull Request
+        if: steps.decision.outputs.go == 'true' && steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            -X PUT \
+            /repos/${{ github.repository }}/pulls/${{ steps.cpr.outputs.pull-request-number }}/merge \
+            -f merge_method=squash
+
+      - name: Upload reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: reports/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+      - name: Deploy Pages
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages
