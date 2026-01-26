@@ -2,3 +2,14 @@ node_modules
 .env
 npm-debug.log*
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated files (recreated by CI)
+data/leads.csv
+docs/index.html
+reports/*.json
+reports/*.md
+!reports/.gitkeep
