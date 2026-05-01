@@ -1,6 +1,6 @@
 # Auto Revenue Framework
 
-外部売上 API から取得したデータを Notion の data source に記録し、集計結果を LINE で通知するフレームワークです。GitHub Actions のスケジュール実行により毎日自動で処理されます。
+外部売上 API から取得したデータを Notion のデータベースに記録し、集計結果を LINE で通知するフレームワークです。GitHub Actions のスケジュール実行により毎日自動で処理されます。
 
 ## アーキテクチャ概要
 1. スキル層: 外部 API から売上を取得 (`HttpJsonSalesSourceClient`)、Notion へ売上行を追加 (`NotionLogger`)、LINE でサマリを通知 (`LineNotifier`)。
@@ -9,13 +9,13 @@
 
 ## Notion の準備
 1. Notion Integration を作成し、シークレットを取得して `NOTION_API_KEY` として保存します。
-2. 対象の data source を作成し、以下のプロパティを用意します。
+2. 対象のデータベースを作成し、以下のプロパティを用意します。
    - Name: タイトル型
    - Amount: 数値型
    - Commission: 数値型
    - Occurred: 日付型
-3. data_source_id は対象 data source ページを開き、URL 末尾から ID をコピーします。
-4. Integration に対して data source への編集権限を共有します。
+3. データベースページの URL から database_id をコピーし、`NOTION_DATABASE_ID` として保存します。
+4. Integration に対して対象データベースへの編集権限を共有します。
 
 ## LINE の準備
 1. LINE Official Account / Messaging API チャネルを作成します。
@@ -28,7 +28,7 @@
 - `AFFILIATE_API_BASE_URL`
 - `AFFILIATE_API_KEY`
 - `NOTION_API_KEY`
-- `NOTION_DATA_SOURCE_ID`
+- `NOTION_DATABASE_ID`
 - `LINE_CHANNEL_ACCESS_TOKEN`
 - `LINE_TO_USER_ID`
 - `TIMEZONE` (省略時は `Asia/Tokyo`)
