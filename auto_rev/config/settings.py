@@ -19,7 +19,7 @@ class Settings:
     affiliate_api_base_url: str
     affiliate_api_key: str
     notion_api_key: str
-    notion_data_source_id: str
+    notion_database_id: str
     line_channel_access_token: str
     line_to_user_id: str
     timezone: str = "Asia/Tokyo"
@@ -30,7 +30,7 @@ class Settings:
             affiliate_api_base_url=_EnvLoader.require("AFFILIATE_API_BASE_URL"),
             affiliate_api_key=_EnvLoader.require("AFFILIATE_API_KEY"),
             notion_api_key=_EnvLoader.require("NOTION_API_KEY"),
-            notion_data_source_id=_EnvLoader.require("NOTION_DATA_SOURCE_ID"),
+            notion_database_id=_EnvLoader.require("NOTION_DATABASE_ID"),
             line_channel_access_token=_EnvLoader.require("LINE_CHANNEL_ACCESS_TOKEN"),
             line_to_user_id=_EnvLoader.require("LINE_TO_USER_ID"),
             timezone=_EnvLoader.require("TIMEZONE", "Asia/Tokyo"),
