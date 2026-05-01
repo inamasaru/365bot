@@ -10,17 +10,17 @@ logger = logging.getLogger(__name__)
 
 
 class NotionLogger:
-    def __init__(self, api_key: str, data_source_id: str, api_base: str = "https://api.notion.com/v1"):
+    def __init__(self, api_key: str, database_id: str, api_base: str = "https://api.notion.com/v1"):
         self.api_key = api_key
-        self.data_source_id = data_source_id
+        self.database_id = database_id
         self.api_base = api_base.rstrip("/")
 
     def _build_page_payload(self, sale: SaleRecord) -> dict:
         occurred_date = sale.occurred_at.date().isoformat()
         return {
             "parent": {
-                "type": "data_source_id",
-                "data_source_id": self.data_source_id,
+                "type": "database_id",
+                "database_id": self.database_id,
             },
             "properties": {
                 "Name": {
@@ -39,7 +39,7 @@ class NotionLogger:
         url = f"{self.api_base}/pages"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Notion-Version": "2025-09-03",
+            "Notion-Version": "2022-06-28",
             "Content-Type": "application/json",
         }
         logger.info("Creating Notion page for sale %s", sale.id)
