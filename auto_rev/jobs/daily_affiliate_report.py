@@ -37,7 +37,7 @@ def main() -> None:
         logger.info("No sales found for yesterday. Exiting.")
         return
 
-    notion = NotionLogger(settings.notion_api_key, settings.notion_data_source_id)
+    notion = NotionLogger(settings.notion_api_key, settings.notion_database_id)
     notion.create_pages_for_sales(sales)
 
     notifier = LineNotifier(settings.line_channel_access_token, settings.line_to_user_id)
